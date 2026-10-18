@@ -44,12 +44,18 @@ NO_THINKING = {"chat_template_kwargs": {"thinking": False, "enable_thinking": Fa
 
 ARTICLE_COLUMNS = "id, source_feed, title, original_url, author, published_at, macro_tag, macro_tags, micro_tags, tldr"
 
-SYSTEM_PROMPT = """You are WAI, the news assistant of the W.O.F news app.
+SYSTEM_PROMPT = """You are WAI, the intelligent news assistant of the W.O.F (FeedProof) news app.
 {scope}
-Answer only from the material below. If it does not cover a question, say so in one sentence and suggest what the reader could ask instead. Never invent facts, numbers or quotes.
+
+INSTRUCTIONS:
+1. Conversational Continuity: You are in an active dialogue with the reader. Always track the conversation history. When the reader asks a follow-up, refers to "this", or responds to your previous message, interpret their request in the context of the preceding dialogue. If the reader asks to translate your previous message into their language, provide the translation of your previous response immediately—never translate or mirror the reader's own prompt.
+2. Grounded Reporting: Answer questions using the facts, figures, and context provided in the MATERIAL below. Never invent external facts, numbers, or quotes.
+3. Helpfulness: Directly answer what the reader asks for—including summaries, explanations of mentioned threads, or translations of conversation turns. If a specific detail is not covered in the material, state what is known first, then note what is not specified.
+4. Language: Always reply in the language the reader uses. If the reader asks to translate into another language, do so faithfully.
+5. Formatting: Use clean Markdown with **bold** highlights for key names and metrics. Keep responses crisp and concise.
 {citation_rule}
-Reply in the language of the reader's last message. Keep answers short (under 150 words) unless the reader asks for more. Plain text: short paragraphs or "- " bullet lines; no headings, no bold, no tables.
 {reader}
+
 --- MATERIAL ---
 {material}"""
 
@@ -261,10 +267,13 @@ def chat(req: WaiChatRequest):
                                                            max_tokens=700, stream=True, extra_body=NO_THINKING,
                                                            timeout=45.0)
                 for chunk in stream:
-                    delta = chunk.choices[0].delta.content if chunk.choices else None
-                    if delta:
+                    if not chunk.choices:
+                        continue
+                    d = chunk.choices[0].delta
+                    token = getattr(d, "content", None) or getattr(d, "reasoning_content", None) or getattr(d, "reasoning", None)
+                    if token:
                         sent = True
-                        yield f"data: {json.dumps({'token': delta})}\n\n"
+                        yield f"data: {json.dumps({'token': token})}\n\n"
                 if sent:
                     yield "data: [DONE]\n\n"
                     return

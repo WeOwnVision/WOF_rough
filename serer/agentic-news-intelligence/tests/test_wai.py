@@ -129,6 +129,20 @@ def test_chat_streams_with_history_and_fallback():
     print("✓ test_chat_streams_with_history_and_fallback PASSED")
 
 
+def test_wai_prompt_rules():
+    _fake_scope()
+    fake = _use([["Tamam, ", "Türkçe özet [1]."]])
+    req = wai.WaiChatRequest(user_id=USER, mode="latest", source_ids=["a", "b"], question="Translate this into Turkish",
+                             history=[{"role": "assistant", "content": "I've gone through your latest developments."}])
+    events = _sse(wai.chat(req))
+    sys_content = fake.calls[0]["messages"][0]["content"]
+    assert "conversational continuity" in sys_content.lower()
+    assert "translate" in sys_content.lower()
+    assert "summaries" in sys_content.lower()
+    assert "".join(e["token"] for e in events if isinstance(e, dict)) == "Tamam, Türkçe özet [1]."
+    print("✓ test_wai_prompt_rules PASSED")
+
+
 if __name__ == "__main__":
     print("=" * 65)
     print("   WAI ASSISTANT TEST SUITE")
@@ -138,6 +152,8 @@ if __name__ == "__main__":
     test_opening_written_by_model_with_fallback()
     test_empty_area_gets_a_fixed_opening()
     test_chat_streams_with_history_and_fallback()
+    test_wai_prompt_rules()
     print("=" * 65)
-    print("ALL 5 WAI TESTS PASSED!")
+    print("ALL 6 WAI TESTS PASSED!")
     print("=" * 65)
+

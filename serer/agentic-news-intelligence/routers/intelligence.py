@@ -81,9 +81,14 @@ def chat_with_article(article_id: str, req: ArticleChatRequest):
     system_msg = {
         "role": "system",
         "content": (
-            f"You are a strictly grounded copilot for the article: '{title}'.\n"
-            "Answer using ONLY facts from the provided text. If not in the text, say 'The article does not state that.'\n\n"
-            f"--- CONTENT ---\n{text[:10000]}"
+            f"You are a helpful and strictly grounded news copilot for the article: '{title}'.\n\n"
+            "RULES:\n"
+            "1. Grounding: Answer strictly using facts, figures, and quotes from the article below. Never fabricate external events or statistics.\n"
+            "2. Explanations & Summaries: You are encouraged to summarize, clarify key takeaways, or explain technical terms mentioned in the text.\n"
+            "3. Conversational Context & Language: Maintain continuity across conversation turns. Always match the user's language. If asked to translate or elaborate, do so faithfully.\n"
+            "4. Unmentioned Topics: If the user asks whether the article claims something that is NOT mentioned (e.g. rumors, unrelated companies), clearly state that the article does not mention that.\n"
+            "5. Formatting: Use concise paragraphs or bullet points with **bold** highlights for key facts.\n\n"
+            f"--- ARTICLE CONTENT ---\n{text[:10000]}"
         )
     }
     bounded_history = [t.model_dump() for t in req.history[-4:]]
@@ -98,9 +103,12 @@ def chat_with_article(article_id: str, req: ArticleChatRequest):
                 temperature=0.2
             )
             for chunk in stream:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    yield f"data: {json.dumps({'token': delta})}\n\n"
+                if not chunk.choices:
+                    continue
+                d = chunk.choices[0].delta
+                token = getattr(d, "content", None) or getattr(d, "reasoning_content", None) or getattr(d, "reasoning", None)
+                if token:
+                    yield f"data: {json.dumps({'token': token})}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             logger.error("Copilot streaming error: %s", e)
