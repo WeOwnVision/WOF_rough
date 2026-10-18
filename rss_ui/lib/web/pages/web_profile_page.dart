@@ -5,17 +5,6 @@ import '../../models/api_models.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
-<<<<<<< HEAD
-import '../widgets/web_ui.dart';
-
-/// Profil (solda) ve ayarlar (sağda) sayfası.
-class WebProfilePage extends StatelessWidget {
-  const WebProfilePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final state = AppState.instance;
-=======
 import '../widgets/interest_form.dart';
 import '../widgets/web_ui.dart';
 
@@ -41,7 +30,6 @@ class _WebProfilePageState extends State<WebProfilePage> {
 
   @override
   Widget build(BuildContext context) {
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     return ListenableBuilder(
       listenable: state,
       builder: (context, _) => SingleChildScrollView(
@@ -333,13 +321,9 @@ class _Settings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-<<<<<<< HEAD
-    final interests = state.interests.toList();
-=======
     final interests = state.interests;
     final topics = state.interestTags;
     final canEdit = state.hasServerUser;
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -479,29 +463,6 @@ class _Settings extends StatelessWidget {
               _SettingRow(
                 icon: Icons.interests_outlined,
                 title: 'Interests',
-<<<<<<< HEAD
-                subtitle: 'Shapes Feed and Discover recommendations',
-                onTap: () => _editInterests(context),
-                trailing: const Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppColors.textMuted,
-                ),
-                below: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final i in interests.take(4)) _Tag(i),
-                    if (interests.length > 4)
-                      _Tag('+${interests.length - 4}', muted: true),
-                    if (interests.isEmpty)
-                      Text(
-                        'No interests selected yet.',
-                        style: GoogleFonts.inter(
-                          color: AppColors.textMuted,
-                          fontSize: 12.5,
-                        ),
-                      ),
-=======
                 subtitle: canEdit
                     ? 'Your Feed shows only these categories'
                     : 'Connect to the server to personalize your Feed',
@@ -559,7 +520,6 @@ class _Settings extends StatelessWidget {
                         ),
                       ),
                     ],
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                   ],
                 ),
               ),
@@ -635,81 +595,21 @@ class _Settings extends StatelessWidget {
     );
   }
 
-<<<<<<< HEAD
-  Future<void> _editInterests(BuildContext context) {
-    final all = {...macroCategories, ...state.interests}.toList();
-=======
   /// Onboarding'deki seçim formunu pencerede açar; kayıt
   /// `PUT /api/users/{id}/preferences` ile yapılır.
   Future<void> _editInterests(BuildContext context) {
     state.preferencesError = null;
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     return showDialog<void>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.7),
       builder: (context) => Dialog(
-<<<<<<< HEAD
-        backgroundColor: AppColors.surface,
-=======
         backgroundColor: AppColors.background,
         insetPadding: const EdgeInsets.all(40),
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
           side: const BorderSide(color: AppColors.border),
         ),
         child: ConstrainedBox(
-<<<<<<< HEAD
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: Padding(
-            padding: const EdgeInsets.all(28),
-            child: ListenableBuilder(
-              listenable: state,
-              builder: (context, _) => Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Interests',
-                    style: GoogleFonts.playfairDisplay(
-                      color: AppColors.textPrimary,
-                      fontSize: 24,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Topics you pick are prioritized in your Feed and '
-                    'Discover recommendations.',
-                    style: GoogleFonts.inter(
-                      color: AppColors.textMuted,
-                      fontSize: 13.5,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      for (final i in all)
-                        PillButton(
-                          label: i,
-                          selected: state.interests.contains(i),
-                          showCheck: true,
-                          onTap: () => state.toggleInterest(i),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 26),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: WebButton(
-                      label: 'Done',
-                      onTap: () => Navigator.of(context).pop(),
-                    ),
-                  ),
-                ],
-              ),
-=======
           constraints: const BoxConstraints(maxWidth: 920, maxHeight: 880),
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(32, 28, 32, 28),
@@ -799,7 +699,6 @@ class _Settings extends StatelessWidget {
                   },
                 ),
               ],
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
             ),
           ),
         ),

@@ -313,8 +313,6 @@ void main() {
       );
     });
 
-<<<<<<< HEAD
-=======
     test('waiChatStream sends the scope, sources and recent history', () async {
       late http.Request sent;
       final api = ApiService(
@@ -355,7 +353,6 @@ void main() {
       expect((body['history'] as List).first['content'], 'turn 2');
     });
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     test('error event -> server error', () async {
       final api = sse([
         'data: {"token": "Hi"}\n\n',
@@ -482,8 +479,6 @@ void main() {
       expect(c.comment, 'Great');
       expect(c.selectedText, 'Steam Deck 2');
     });
-<<<<<<< HEAD
-=======
 
     test('login parses onboarding state and preferences', () async {
       final api = _api(
@@ -870,6 +865,5 @@ void main() {
       expect(d.articles.single.source, 'Wired');
       expect(d.isCached, isTrue);
     });
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   });
 }

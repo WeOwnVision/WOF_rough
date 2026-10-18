@@ -31,63 +31,6 @@ String _sse(List<String> tokens) => [
   'data: [DONE]\n\n',
 ].join();
 
-<<<<<<< HEAD
-/// Sunucuyu taklit eden istemci. [chatReply] boşsa chat boş akış döndürür.
-MockClient _server({String chatReply = 'It is about faster chips.'}) =>
-    MockClient((req) async {
-      final path = req.url.path;
-      http.Response json(Object body) => http.Response.bytes(
-        utf8.encode(jsonEncode(body)),
-        200,
-        headers: {'content-type': 'application/json'},
-      );
-      http.Response sse(String body) => http.Response.bytes(
-        utf8.encode(body),
-        200,
-        headers: {'content-type': 'text/event-stream; charset=utf-8'},
-      );
-
-      if (path == '/api/articles') {
-        final page = int.parse(req.url.queryParameters['page'] ?? '1');
-        return json(page == 1 ? [for (var i = 0; i < 6; i++) _article(i)] : []);
-      }
-      if (path == '/api/search') {
-        return json({
-          'query': req.url.queryParameters['q'],
-          'direct': [
-            {..._article(1), 'match_tier': 'direct', 'relevance_score': 95},
-          ],
-          'explore': [
-            {
-              ..._article(2),
-              'match_tier': 'explore',
-              'relevance_score': 60,
-              'explore_angle': 'Compute & Acceleration',
-            },
-          ],
-        });
-      }
-      if (path == '/api/users/login') {
-        final body = jsonDecode(req.body) as Map<String, dynamic>;
-        return json({
-          'id': 'u1',
-          'username': body['username'],
-          'avatar_url': null,
-        });
-      }
-      if (path == '/api/intelligence/synthesize') {
-        return sse(_sse(['**1. Shared Consensus**\n', '- Chips are faster.']));
-      }
-      if (path.endsWith('/chat')) {
-        return sse(chatReply.isEmpty ? 'data: [DONE]\n\n' : _sse([chatReply]));
-      }
-      if (path.endsWith('/comments')) return json([]);
-      if (path.startsWith('/api/articles/')) {
-        return json({..._article(0), 'clean_text': 'Full text of the story.'});
-      }
-      return http.Response('not found', 404);
-    });
-=======
 const _taxonomy = [
   {
     'macro': 'AI',
@@ -317,7 +260,6 @@ MockClient _server({
     return http.Response('not found', 404);
   });
 }
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 
 Future<void> _settle(WidgetTester tester) async {
   // Sahte istekler mikro görevlerde tamamlanır; birkaç kare yeterli.
@@ -360,10 +302,7 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
-<<<<<<< HEAD
-=======
     _requests.clear();
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     _useServer(_server());
   });
 
@@ -420,11 +359,6 @@ void main() {
 
     await tester.runAsync(() => state.send('What is it about?'));
     await _settle(tester);
-<<<<<<< HEAD
-    // Balonda ve sohbet listesi önizlemesinde görünür.
-    expect(find.text('It is about faster chips.'), findsWidgets);
-    expect(find.text('Helpful'), findsOneWidget);
-=======
     // Balonda ve sohbet listesi önizlemesinde görünür. Sunucu kullanıcısı
     // yoksa WAI sohbeti sabit bir girişle açar (+ cevap: iki WAI mesajı).
     expect(find.text('It is about faster chips.'), findsWidgets);
@@ -526,7 +460,6 @@ void main() {
       find.text('This story is about faster chips. Want the key points?'),
       findsWidgets,
     );
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   });
 
   testWidgets('empty WAI answer shows an English error with Retry', (
@@ -544,8 +477,6 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
   });
 
-<<<<<<< HEAD
-=======
   testWidgets('onboarding: pick → taste check → your feed is ready', (
     tester,
   ) async {
@@ -809,7 +740,6 @@ void main() {
     expect(find.widgetWithText(TextField, 'I build products'), findsOneWidget);
   });
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   testWidgets('tunnel down shows Server unavailable', (tester) async {
     _useServer(
       MockClient((_) async => http.Response('503 - Tunnel Unavailable', 503)),

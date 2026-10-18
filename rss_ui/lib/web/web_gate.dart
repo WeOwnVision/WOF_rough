@@ -6,19 +6,12 @@ import '../state/app_state.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common.dart';
 import '../widgets/state_views.dart';
-<<<<<<< HEAD
-import 'web_shell.dart';
-import 'widgets/web_ui.dart';
-
-/// Web girişi: oturum yoksa giriş ekranı, varsa [WebShell].
-=======
 import 'pages/web_onboarding_page.dart';
 import 'web_shell.dart';
 import 'widgets/web_ui.dart';
 
 /// Web girişi: oturum yoksa giriş ekranı; ilgi alanları seçilmemişse
 /// [WebOnboardingPage]; ikisi de tamamsa [WebShell].
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 class WebGate extends StatefulWidget {
   const WebGate({super.key});
 
@@ -40,9 +33,6 @@ class _WebGateState extends State<WebGate> {
     return ListenableBuilder(
       listenable: _state,
       builder: (context, _) {
-<<<<<<< HEAD
-        if (_state.user != null) return const WebShell();
-=======
         if (_state.user != null) {
           // Sunucu `onboarding_completed: false` döndürdüyse 3 adımlı
           // onboarding (seç → tadına bak → akışın hazır) tamamlanır.
@@ -50,7 +40,6 @@ class _WebGateState extends State<WebGate> {
               ? const WebOnboardingPage()
               : const WebShell();
         }
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
         if (_state.sessionLoading) {
           return const Scaffold(
             backgroundColor: AppColors.background,

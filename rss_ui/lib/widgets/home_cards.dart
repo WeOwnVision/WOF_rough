@@ -35,13 +35,10 @@ class _Card extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Günün manşeti kartı (görsel + başlık + özet + sesli bülten)
 // ---------------------------------------------------------------------------
-<<<<<<< HEAD
-=======
 /// Varsayılan olarak tek haberi gösterir ("TOP STORY"). Ana sayfadaki "Latest
 /// developments" kartı aynı düzeni kullanır: [label], [title] ve [summary]
 /// sunucunun yazdığı başlık ve paragrafla doldurulur, görsel [article]'dan
 /// (en üstteki haber) gelir.
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 class DailySummaryCard extends StatelessWidget {
   const DailySummaryCard({
     super.key,
@@ -49,21 +46,16 @@ class DailySummaryCard extends StatelessWidget {
     this.large = false,
     this.horizontal = false,
     this.onTap,
-<<<<<<< HEAD
-=======
     this.label = 'TOP STORY',
     this.title,
     this.summary,
     this.summaryMaxLines = 3,
     this.caption,
     this.onAsk,
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   });
 
   final Article article;
 
-<<<<<<< HEAD
-=======
   /// Kartın üstündeki etiket.
   final String label;
 
@@ -78,7 +70,6 @@ class DailySummaryCard extends StatelessWidget {
   /// Doluysa özetin altında "Ask WAI" düğmesi gösterilir.
   final VoidCallback? onAsk;
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   /// Masaüstü ölçüleri.
   final bool large;
 
@@ -93,11 +84,7 @@ class DailySummaryCard extends StatelessWidget {
         const MintDot(),
         const SizedBox(width: 7),
         Text(
-<<<<<<< HEAD
-          'TOP STORY',
-=======
           label,
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
           style: GoogleFonts.inter(
             color: AppColors.mint,
             fontSize: large ? 12 : 11,
@@ -144,20 +131,12 @@ class DailySummaryCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Text(
-<<<<<<< HEAD
-                  [
-                    article.category,
-                    article.source,
-                    article.timeAgo,
-                  ].where((s) => s.isNotEmpty).join(' · '),
-=======
                   caption ??
                       [
                         article.category,
                         article.source,
                         article.timeAgo,
                       ].where((s) => s.isNotEmpty).join(' · '),
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                   style: GoogleFonts.inter(
                     color: AppColors.textPrimary,
                     fontSize: 12,
@@ -171,13 +150,8 @@ class DailySummaryCard extends StatelessWidget {
       ),
     );
 
-<<<<<<< HEAD
-    final title = Text(
-      article.title,
-=======
     final titleText = Text(
       title ?? article.title,
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
       maxLines: 3,
       overflow: TextOverflow.ellipsis,
       style: GoogleFonts.playfairDisplay(
@@ -188,15 +162,9 @@ class DailySummaryCard extends StatelessWidget {
       ),
     );
 
-<<<<<<< HEAD
-    final summary = Text(
-      article.summary,
-      maxLines: 3,
-=======
     final summaryText = Text(
       summary ?? article.summary,
       maxLines: summaryMaxLines,
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
       overflow: TextOverflow.ellipsis,
       style: GoogleFonts.sourceSerif4(
         color: AppColors.textBody,
@@ -230,11 +198,6 @@ class DailySummaryCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-<<<<<<< HEAD
-                      tappable(title),
-                      const SizedBox(height: 12),
-                      summary,
-=======
                       tappable(titleText),
                       const SizedBox(height: 12),
                       summaryText,
@@ -242,7 +205,6 @@ class DailySummaryCard extends StatelessWidget {
                         const SizedBox(height: 14),
                         _AskWaiButton(onTap: onAsk!),
                       ],
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                       const SizedBox(height: 20),
                       const AudioBulletinPlayer(),
                     ],
@@ -264,11 +226,6 @@ class DailySummaryCard extends StatelessWidget {
           SizedBox(height: large ? 16 : 12),
           tappable(image),
           SizedBox(height: large ? 22 : 18),
-<<<<<<< HEAD
-          tappable(title),
-          SizedBox(height: large ? 10 : 8),
-          summary,
-=======
           tappable(titleText),
           SizedBox(height: large ? 10 : 8),
           summaryText,
@@ -276,7 +233,6 @@ class DailySummaryCard extends StatelessWidget {
             SizedBox(height: large ? 14 : 10),
             _AskWaiButton(onTap: onAsk!),
           ],
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
           SizedBox(height: large ? 18 : 14),
           const AudioBulletinPlayer(),
         ],
@@ -285,8 +241,6 @@ class DailySummaryCard extends StatelessWidget {
   }
 }
 
-<<<<<<< HEAD
-=======
 /// "Ask WAI about this": kartın içeriğiyle WAI sohbetini açar.
 class _AskWaiButton extends StatelessWidget {
   const _AskWaiButton({required this.onTap});
@@ -328,7 +282,6 @@ class _AskWaiButton extends StatelessWidget {
   }
 }
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 // ---------------------------------------------------------------------------
 // Kaynak karşılaştırma özeti (synthesize)
 // ---------------------------------------------------------------------------
@@ -343,10 +296,6 @@ class WrittenSummaryCard extends StatelessWidget {
     this.onReadMore,
     this.large = false,
     this.previewHeight,
-<<<<<<< HEAD
-  });
-
-=======
     this.title = 'Cross-Source Brief',
     this.loadingMessage = "WAI is comparing today's top stories…",
     this.loadingHint = 'This can take up to 30 seconds.',
@@ -357,7 +306,6 @@ class WrittenSummaryCard extends StatelessWidget {
   final String loadingMessage;
   final String loadingHint;
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   /// Karşılaştırılan haberler.
   final List<Article> sources;
   final String? brief;
@@ -378,15 +326,9 @@ class WrittenSummaryCard extends StatelessWidget {
     if (error != null) {
       body = ErrorView(error: error!, onRetry: onRetry, compact: true);
     } else if (loading || brief == null) {
-<<<<<<< HEAD
-      body = const LoadingView(
-        message: "WAI is comparing today's top stories…",
-        hint: 'This can take up to 30 seconds.',
-=======
       body = LoadingView(
         message: loadingMessage,
         hint: loadingHint,
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
         padding: 36,
       );
     } else if (onReadMore != null) {
@@ -430,11 +372,7 @@ class WrittenSummaryCard extends StatelessWidget {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
-<<<<<<< HEAD
-                    'Cross-Source Brief',
-=======
                     title,
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                     maxLines: 1,
                     style: GoogleFonts.playfairDisplay(
                       color: AppColors.textPrimary,
@@ -444,17 +382,6 @@ class WrittenSummaryCard extends StatelessWidget {
                   ),
                 ),
               ),
-<<<<<<< HEAD
-              const SizedBox(width: 6),
-              Text(
-                '${sources.length} sources',
-                style: GoogleFonts.inter(
-                  color: AppColors.textBody,
-                  fontSize: large ? 12 : 11,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-=======
               if (sources.isNotEmpty) ...[
                 const SizedBox(width: 6),
                 Text(
@@ -466,7 +393,6 @@ class WrittenSummaryCard extends StatelessWidget {
                   ),
                 ),
               ],
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
             ],
           ),
           const SizedBox(height: 10),
@@ -536,8 +462,6 @@ class WrittenSummaryCard extends StatelessWidget {
     );
   }
 }
-<<<<<<< HEAD
-=======
 
 // ---------------------------------------------------------------------------
 // Haber özetleri listesi (ana sayfadaki "Daily Brief")
@@ -709,4 +633,3 @@ class _StorySummary extends StatelessWidget {
     );
   }
 }
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)

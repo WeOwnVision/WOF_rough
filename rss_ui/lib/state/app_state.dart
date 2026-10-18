@@ -49,12 +49,9 @@ class AppState extends ChangeNotifier {
   static const _kSaved = 'saved_ids';
   static const _kLiked = 'liked_ids';
 
-<<<<<<< HEAD
-=======
   /// Sunucuya ulaşılamadığında oluşturulan geçici kullanıcıların öneki.
   static const _localPrefix = 'local-';
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   SharedPreferences? _prefs;
   bool _initialized = false;
 
@@ -65,8 +62,6 @@ class AppState extends ChangeNotifier {
   bool loggingIn = false;
   ApiException? sessionError;
 
-<<<<<<< HEAD
-=======
   /// Kullanıcı sunucuda gerçekten var mı? Çevrimdışı oluşturulan
   /// `local-…` kullanıcılarla kişiselleştirme uç noktaları çağrılmaz
   /// (sunucu geçersiz kimlik için 400 döndürür).
@@ -75,7 +70,6 @@ class AppState extends ChangeNotifier {
   /// Giriş yapmış ama ilgi alanlarını seçmemiş: onboarding ekranı açılır.
   bool get needsOnboarding => hasServerUser && !user!.onboardingCompleted;
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   /// Tercihleri yükler ve daha önce giriş yapılmışsa sessizce tekrar dener.
   Future<void> init() async {
     if (_initialized) return;
@@ -83,11 +77,6 @@ class AppState extends ChangeNotifier {
     try {
       _prefs = await SharedPreferences.getInstance();
       _cache = LocalCache(_prefs!);
-<<<<<<< HEAD
-      saved.addAll(_prefs!.getStringList(_kSaved) ?? const []);
-      liked.addAll(_prefs!.getStringList(_kLiked) ?? const []);
-=======
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     } catch (_) {
       // Depolama kullanılamıyorsa (gizli sekme vb.) yalnızca bellek kullan.
     }
@@ -99,12 +88,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-<<<<<<< HEAD
-=======
   /// `POST /api/users/login`. Kullanıcı yoksa sunucu oluşturur; yanıttaki
   /// `onboarding_completed` ilgi alanı ekranının açılıp açılmayacağını
   /// belirler.
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   Future<void> login(String username) async {
     loggingIn = true;
     sessionError = null;
@@ -117,11 +103,7 @@ class AppState extends ChangeNotifier {
           e.kind == ApiErrorKind.network ||
           e.kind == ApiErrorKind.timeout) {
         user = AppUser(
-<<<<<<< HEAD
-          id: 'local-${username.trim()}',
-=======
           id: '$_localPrefix${username.trim()}',
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
           username: username.trim(),
         );
         await _prefs?.setString(_kUsername, user!.username);
@@ -129,8 +111,6 @@ class AppState extends ChangeNotifier {
         sessionError = e;
       }
     } finally {
-<<<<<<< HEAD
-=======
       if (user != null) {
         _loadLibrary();
         // Akış kişiye özel olduğu için önceki oturumunkini kullanma.
@@ -140,7 +120,6 @@ class AppState extends ChangeNotifier {
         if (needsOnboarding) onboardingStep = OnboardingStep.pick;
         if (hasServerUser) loadFollows();
       }
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
       loggingIn = false;
       notifyListeners();
     }
@@ -150,8 +129,6 @@ class AppState extends ChangeNotifier {
     user = null;
     sessionError = null;
     navIndex = navHome;
-<<<<<<< HEAD
-=======
     interestSummary = null;
     follows = const [];
     saved.clear();
@@ -159,14 +136,11 @@ class AppState extends ChangeNotifier {
     _disliked.clear();
     _clearFeed();
     _resetOnboarding();
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     await _prefs?.remove(_kUsername);
     notifyListeners();
   }
 
   // -------------------------------------------------------------------------
-<<<<<<< HEAD
-=======
   // İlgi alanları (taksonomi + tercihler)
   // -------------------------------------------------------------------------
   /// Sunucudaki sabit kategori listesi; oturum boyunca bir kez yüklenir.
@@ -562,7 +536,6 @@ class AppState extends ChangeNotifier {
   }
 
   // -------------------------------------------------------------------------
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   // Haber önbelleği ve detaylar
   // -------------------------------------------------------------------------
   final Map<String, Article> _articles = {};
@@ -615,8 +588,6 @@ class AppState extends ChangeNotifier {
   bool feedLoading = false;
   ApiException? feedError;
 
-<<<<<<< HEAD
-=======
   /// Akış kişiye özel mi (`/api/feed/personalized`)?
   bool feedIsPersonal = false;
 
@@ -627,7 +598,6 @@ class AppState extends ChangeNotifier {
   /// Bekleyen bir yüklemenin sonucu, akış o sırada temizlendiyse atılır.
   int _feedGeneration = 0;
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   Future<void>? _feedRequest;
 
   /// Akış henüz yüklenmediyse ilk sayfayı getirir; yükleme sürüyorsa onu
@@ -644,14 +614,6 @@ class AppState extends ChangeNotifier {
     if (!feedHasMore) return Future.value();
     feedLoading = true;
     feedError = null;
-<<<<<<< HEAD
-    return _feedRequest = _loadMoreFeed().whenComplete(() {
-      _feedRequest = null;
-    });
-  }
-
-  Future<void> _loadMoreFeed() async {
-=======
     late final Future<void> request;
     request = _loadMoreFeed().whenComplete(() {
       // Bu arada akış temizlenip yeni istek başladıysa ona dokunma.
@@ -662,23 +624,12 @@ class AppState extends ChangeNotifier {
 
   Future<void> _loadMoreFeed() async {
     final generation = _feedGeneration;
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     // Sayfaların initState'inden çağrılabilir; çizim bitince bildir.
     await Future<void>.value();
     notifyListeners();
     try {
       var added = 0;
       while (added == 0 && feedHasMore) {
-<<<<<<< HEAD
-        final page = await api.getArticlePage(
-          page: _feedPage + 1,
-          pageSize: pageSize,
-        );
-        _feedPage++;
-        feedHasMore = page.hasMore;
-        final known = feed.map((a) => a.id).toSet();
-        final fresh = page.items.where((a) => !known.contains(a.id)).toList();
-=======
         final List<Article> items;
         // Giriş yapmış kullanıcıya kişisel akış; mobil / çevrimdışı
         // kullanıcıya genel akış.
@@ -707,7 +658,6 @@ class AppState extends ChangeNotifier {
         _feedPage++;
         final known = feed.map((a) => a.id).toSet();
         final fresh = items.where((a) => !known.contains(a.id)).toList();
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
         _remember(fresh);
         feed.addAll(fresh);
         added = fresh.length;
@@ -716,10 +666,7 @@ class AppState extends ChangeNotifier {
       _offline = false;
       _cache?.saveArticles(feed);
     } on ApiException catch (e) {
-<<<<<<< HEAD
-=======
       if (generation != _feedGeneration) return;
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
       // First page failed and feed is empty → fall back to local cache.
       if (feed.isEmpty) {
         final cached = _cache?.loadArticles() ?? const [];
@@ -736,29 +683,14 @@ class AppState extends ChangeNotifier {
         feedError = e;
       }
     } finally {
-<<<<<<< HEAD
-      feedLoading = false;
-      notifyListeners();
-=======
       if (generation == _feedGeneration) {
         feedLoading = false;
         notifyListeners();
       }
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     }
   }
 
   Future<void> refreshFeed() async {
-<<<<<<< HEAD
-    feed.clear();
-    _feedPage = 0;
-    feedHasMore = true;
-    feedIndex = 0;
-    _offline = false;
-    brief = null;
-    briefError = null;
-    await loadMoreFeed();
-=======
     _clearFeed();
     await loadMoreFeed();
   }
@@ -796,7 +728,6 @@ class AppState extends ChangeNotifier {
       changed |= serverLiked ? liked.add(a.id) : liked.remove(a.id);
     }
     if (changed) _persistIds(_kLiked, liked);
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   }
 
   // -------------------------------------------------------------------------
@@ -809,17 +740,6 @@ class AppState extends ChangeNotifier {
   Article? get currentFeedArticle =>
       feedIndex < feed.length ? feed[feedIndex] : null;
 
-<<<<<<< HEAD
-  void react(Article article, {required bool like}) {
-    if (like) {
-      liked.add(article.id);
-      sessionLikes++;
-    } else {
-      liked.remove(article.id);
-      sessionDislikes++;
-    }
-    _persistIds(_kLiked, liked);
-=======
   /// Bu oturumda beğenilmeyen haberler. Sunucu bunları akıştan çıkarır;
   /// "Start over" ile aynı kart tekrar geçilirse istek yeniden gönderilmez.
   final Set<String> _disliked = {};
@@ -837,15 +757,12 @@ class AppState extends ChangeNotifier {
       sessionDislikes++;
     }
     _recordOpinion(article.id, like: like);
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     feedIndex++;
     notifyListeners();
     // Kartlar bitmeden sonraki sayfayı hazırla.
     if (feed.length - feedIndex <= 3) loadMoreFeed();
   }
 
-<<<<<<< HEAD
-=======
   /// Beğeni ya da beğenmemeyi cihazda kaydeder ve sunucuya gönderir.
   /// Aynı haber için tekrar beğenmeme gönderilmez (sunucu her seferinde
   /// vektörü yeniden iterdi).
@@ -864,7 +781,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   void restartFeed() {
     feedIndex = 0;
     sessionLikes = 0;
@@ -873,27 +789,16 @@ class AppState extends ChangeNotifier {
   }
 
   // -------------------------------------------------------------------------
-<<<<<<< HEAD
-  // Günün özeti (synthesize)
-  // -------------------------------------------------------------------------
-  /// Ana sayfadaki karşılaştırmalı özetin kullandığı haber sayısı.
-=======
   // Günün özeti
   // -------------------------------------------------------------------------
   /// Ana sayfadaki karşılaştırmalı özetin kullandığı haber sayısı
   /// (giriş yapılmamışsa).
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   static const briefSize = 3;
 
   String? brief;
   bool briefLoading = false;
   ApiException? briefError;
 
-<<<<<<< HEAD
-  List<Article> get briefArticles => feed.take(briefSize).toList();
-
-  /// İlk haberlerin karşılaştırmalı özetini bir kez üretir (~15-25 sn).
-=======
   /// Giriş yapılmışsa "Latest developments" kartının başlığı; genel özette
   /// `null`.
   String? briefTitle;
@@ -915,29 +820,11 @@ class AppState extends ChangeNotifier {
   /// haberlerden yazılmış başlık ([briefTitle]) ve paragraf ([brief]); ilk
   /// üretim ~2 sn, sonra önbellekten. Tavily kredisi harcamaz. Değilse ilk
   /// haberler `synthesize` ile karşılaştırılır (~15-25 sn).
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   Future<void> loadBrief() async {
     if (briefLoading || brief != null) return;
     // Bayrağı hemen koy ki eşzamanlı çağrılar ikinci bir istek başlatmasın.
     briefLoading = true;
     briefError = null;
-<<<<<<< HEAD
-    try {
-      await ensureFeed();
-      final ids = briefArticles.map((a) => a.id).toList();
-      if (ids.length < 2) return;
-      await Future<void>.value();
-      notifyListeners();
-      brief = await api.synthesizeArticles(ids);
-    } on ApiException catch (e) {
-      briefError = e;
-    } finally {
-      briefLoading = false;
-      notifyListeners();
-    }
-  }
-
-=======
     final generation = _briefGeneration;
     try {
       if (hasServerUser) {
@@ -993,7 +880,6 @@ class AppState extends ChangeNotifier {
     });
   }
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   // -------------------------------------------------------------------------
   // Arama (üst bardan Keşfet'e)
   // -------------------------------------------------------------------------
@@ -1012,15 +898,10 @@ class AppState extends ChangeNotifier {
   }
 
   // -------------------------------------------------------------------------
-<<<<<<< HEAD
-  // Kaydedilenler / beğeniler (cihazda)
-  // -------------------------------------------------------------------------
-=======
   // Kaydedilenler / beğeniler
   // -------------------------------------------------------------------------
   /// Cihazda kullanıcı başına tutulur ve sunucuya da gönderilir. Sunucuda
   /// listeleme uç noktası olmadığı için listeler cihazdan gösterilir.
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   final Set<String> saved = {};
   final Set<String> liked = {};
 
@@ -1028,30 +909,20 @@ class AppState extends ChangeNotifier {
   bool isLiked(String id) => liked.contains(id);
 
   void toggleSaved(String id) {
-<<<<<<< HEAD
-    if (!saved.remove(id)) saved.add(id);
-    _persistIds(_kSaved, saved);
-=======
     final active = saved.add(id);
     if (!active) saved.remove(id);
     _persistIds(_kSaved, saved);
     _syncInteraction(id, InteractionType.bookmark, active);
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     notifyListeners();
   }
 
   void toggleLiked(String id) {
-<<<<<<< HEAD
-    if (!liked.remove(id)) liked.add(id);
-    _persistIds(_kLiked, liked);
-=======
     final active = liked.add(id);
     if (!active) liked.remove(id);
     // Sunucu beğeni kaydedilince beğenmemeyi siler.
     if (active) _disliked.remove(id);
     _persistIds(_kLiked, liked);
     _syncInteraction(id, InteractionType.like, active);
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     notifyListeners();
   }
 
@@ -1062,10 +933,6 @@ class AppState extends ChangeNotifier {
   List<Article> _known(Set<String> ids) =>
       ids.toList().reversed.map(articleById).whereType<Article>().toList();
 
-<<<<<<< HEAD
-  void _persistIds(String key, Set<String> ids) =>
-      _prefs?.setStringList(key, ids.toList());
-=======
   /// Aynı haber için istekler sırayla gönderilir; sunucu aç/kapa çalıştığı
   /// için üst üste tıklamalar birbirini bozmasın. Beğeni ve beğenmeme
   /// sunucuda birbirini sildiği için aynı sırayı paylaşır.
@@ -1138,21 +1005,10 @@ class AppState extends ChangeNotifier {
 
   void _persistIds(String base, Set<String> ids) =>
       _prefs?.setStringList(_libraryKey(base), ids.toList());
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 
   // -------------------------------------------------------------------------
   // WAI sohbeti
   // -------------------------------------------------------------------------
-<<<<<<< HEAD
-  /// Haber kimliği → mesajlar. Sıra, eklenme sırasıdır.
-  final Map<String, List<ChatMessage>> threads = {};
-  String? activeThreadId;
-
-  List<ChatMessage> get activeMessages => threads[activeThreadId] ?? const [];
-
-  Article? get activeThreadArticle =>
-      activeThreadId == null ? null : articleById(activeThreadId!);
-=======
   /// Sohbetler, açılış sırasıyla. Anahtar kapsamı belirtir: `story:<haber>`,
   /// `latest` ya da `area:<alan>`; aynı kapsam ikinci kez açılırsa eski sohbete
   /// dönülür.
@@ -1165,7 +1021,6 @@ class AppState extends ChangeNotifier {
 
   /// Haber sohbetinin haberi; diğer sohbetlerde `null`.
   Article? get activeThreadArticle => activeThread?.article;
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 
   /// Aktif sohbette WAI şu an yazıyor mu?
   bool get waiTyping => activeMessages.any((m) => m.streaming);
@@ -1175,28 +1030,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-<<<<<<< HEAD
-  /// Haber seçme ekranına döner.
-=======
   /// Alan seçme ekranına döner.
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   void startNewChat() {
     activeThreadId = null;
     notifyListeners();
   }
 
-<<<<<<< HEAD
-  /// Bir haberi WAI'ye gönderir ve sohbet sayfasına geçer.
-  void askAbout(Article article) {
-    _remember([article]);
-    threads.putIfAbsent(
-      article.id,
-      () => [ChatMessage(role: ChatRole.user, article: article)],
-    );
-    activeThreadId = article.id;
-    navIndex = navChat;
-    notifyListeners();
-=======
   /// Haber kartından: WAI haberin tam metnini okur ve sohbeti kendisi açar.
   void askAbout(Article article) {
     _remember([article]);
@@ -1280,27 +1119,10 @@ class AppState extends ChangeNotifier {
       reply.time = DateTime.now();
       notifyListeners();
     }
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   }
 
   Future<void> send(String text) async {
     final question = text.trim();
-<<<<<<< HEAD
-    final threadId = activeThreadId;
-    if (question.isEmpty || threadId == null || waiTyping) return;
-    threads[threadId]!.add(ChatMessage(role: ChatRole.user, text: question));
-    await _answer(threadId, question);
-  }
-
-  /// Hatalı yanıtı siler ve aynı soruyu yeniden sorar.
-  Future<void> retry(ChatMessage failed) async {
-    final threadId = activeThreadId;
-    if (threadId == null || waiTyping) return;
-    final thread = threads[threadId]!;
-    final index = thread.indexOf(failed);
-    if (index <= 0) return;
-    final question = thread
-=======
     final thread = activeThread;
     if (question.isEmpty || thread == null || waiTyping) return;
     thread.messages.add(ChatMessage(role: ChatRole.user, text: question));
@@ -1321,31 +1143,16 @@ class AppState extends ChangeNotifier {
       return;
     }
     final question = messages
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
         .take(index)
         .lastWhere(
           (m) => m.role == ChatRole.user && m.text.isNotEmpty,
           orElse: () => ChatMessage(role: ChatRole.user),
         )
         .text;
-<<<<<<< HEAD
-    thread.removeAt(index);
-=======
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     if (question.isEmpty) {
       notifyListeners();
       return;
     }
-<<<<<<< HEAD
-    await _answer(threadId, question);
-  }
-
-  Future<void> _answer(String threadId, String question) async {
-    final thread = threads[threadId]!;
-    // Sunucuya giden geçmiş: bu sorudan önceki başarılı turlar.
-    final history = <ChatTurn>[
-      for (final m in thread)
-=======
     await _answer(thread, question);
   }
 
@@ -1354,7 +1161,6 @@ class AppState extends ChangeNotifier {
     // açılış mesajı dahil; "evet" gibi kısa cevaplar ona göre anlaşılır).
     final history = <ChatTurn>[
       for (final m in thread.messages)
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
         if (m.text.isNotEmpty && !m.isError && m.article == null)
           m.role == ChatRole.user
               ? ChatTurn.user(m.text)
@@ -1363,17 +1169,6 @@ class AppState extends ChangeNotifier {
     if (history.isNotEmpty) history.removeLast(); // Sorunun kendisi.
 
     final reply = ChatMessage(role: ChatRole.assistant, streaming: true);
-<<<<<<< HEAD
-    thread.add(reply);
-    notifyListeners();
-
-    try {
-      await for (final chunk in api.chatStream(
-        threadId,
-        question: question,
-        history: history,
-      )) {
-=======
     thread.messages.add(reply);
     notifyListeners();
 
@@ -1395,7 +1190,6 @@ class AppState extends ChangeNotifier {
           );
     try {
       await for (final chunk in stream) {
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
         reply.text += chunk;
         notifyListeners();
       }
@@ -1425,10 +1219,6 @@ class AppState extends ChangeNotifier {
   double audioSpeed = 1.25;
   bool notifications = true;
   String language = 'English';
-<<<<<<< HEAD
-  final Set<String> interests = {'AI', 'Hardware', 'Science'};
-=======
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 
   void setTheme(ThemeChoice value) {
     theme = value;
@@ -1454,22 +1244,10 @@ class AppState extends ChangeNotifier {
     language = value;
     notifyListeners();
   }
-<<<<<<< HEAD
-
-  void toggleInterest(String value) {
-    if (!interests.remove(value)) interests.add(value);
-    notifyListeners();
-  }
-=======
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 }
 
 enum ThemeChoice { light, dark, system }
 
-<<<<<<< HEAD
-enum ChatRole { user, assistant }
-
-=======
 /// Onboarding adımları: 1 seç, 2 tadına bak, 3 akışın hazır.
 enum OnboardingStep { pick, taste, reveal }
 
@@ -1508,28 +1286,21 @@ class WaiThread {
   final List<ChatMessage> messages = [];
 }
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 class ChatMessage {
   ChatMessage({
     required this.role,
     this.text = '',
     this.article,
     this.streaming = false,
-<<<<<<< HEAD
-=======
     this.isOpening = false,
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     DateTime? time,
   }) : time = time ?? DateTime.now();
 
   final ChatRole role;
 
-<<<<<<< HEAD
-=======
   /// WAI'nin sohbeti açan ilk mesajı.
   final bool isOpening;
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   /// Akış sırasında parça parça büyür.
   String text;
 

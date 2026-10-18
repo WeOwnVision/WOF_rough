@@ -7,13 +7,6 @@ import '../../models/article_ui.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
-<<<<<<< HEAD
-import '../../widgets/state_views.dart';
-import '../widgets/article_dialog.dart';
-import '../widgets/web_ui.dart';
-
-/// WAI haber asistanı sohbeti.
-=======
 import '../../widgets/simple_markdown.dart';
 import '../../widgets/state_views.dart';
 import '../widgets/article_dialog.dart';
@@ -23,7 +16,6 @@ import '../widgets/web_ui.dart';
 /// WAI haber asistanı. Sohbet üç yerden açılır ve ilk mesajı WAI yazar:
 /// haber kartından (haberin tam metni), ana sayfadaki "Latest developments"
 /// kartından ve bu sayfada seçilen bir alandan (o alanın son haberleri).
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 class WebChatPage extends StatelessWidget {
   const WebChatPage({super.key});
 
@@ -37,10 +29,7 @@ class WebChatPage extends StatelessWidget {
         builder: (context, _) => LayoutBuilder(
           builder: (context, c) {
             final showContext = c.maxWidth >= 1080;
-<<<<<<< HEAD
-=======
             final thread = state.activeThread;
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
             final news = state.activeThreadArticle;
             return Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -52,17 +41,11 @@ class WebChatPage extends StatelessWidget {
                   const SizedBox(width: 20),
                   SizedBox(
                     width: 320,
-<<<<<<< HEAD
-                    child: news == null
-                        ? const _CapabilitiesPanel()
-                        : _ContextPanel(news: news),
-=======
                     child: thread == null
                         ? const _CapabilitiesPanel()
                         : news != null
                         ? _ContextPanel(news: news)
                         : _SourcesPanel(thread: thread),
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                   ),
                 ],
               ],
@@ -133,11 +116,7 @@ class _ThreadList extends StatelessWidget {
                 ? Padding(
                     padding: const EdgeInsets.all(8),
                     child: Text(
-<<<<<<< HEAD
-                      'No chats yet. Pick a story to start one.',
-=======
                       'No chats yet. Pick an area to start one.',
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                       style: GoogleFonts.inter(
                         color: AppColors.textMuted,
                         fontSize: 13,
@@ -149,24 +128,13 @@ class _ThreadList extends StatelessWidget {
                     separatorBuilder: (_, _) => const SizedBox(height: 4),
                     itemBuilder: (context, i) {
                       final id = ids[i];
-<<<<<<< HEAD
-                      final news = state.articleById(id);
-                      final messages = state.threads[id]!;
-=======
                       final thread = state.threads[id]!;
                       final messages = thread.messages;
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                       final last = messages.lastWhere(
                         (m) => m.text.isNotEmpty,
                         orElse: () => messages.last,
                       );
                       return _ThreadTile(
-<<<<<<< HEAD
-                        title: news?.title ?? 'Story',
-                        preview: last.text.isEmpty ? 'Story shared' : last.text,
-                        time: formatTime(last.time),
-                        image: news?.image,
-=======
                         title: thread.title,
                         preview: last.text.isEmpty
                             ? 'WAI is reading…'
@@ -174,7 +142,6 @@ class _ThreadList extends StatelessWidget {
                         time: formatTime(last.time),
                         image: thread.article?.image,
                         icon: _modeIcon(thread),
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                         selected: id == state.activeThreadId,
                         onTap: () => state.openThread(id),
                       );
@@ -185,13 +152,8 @@ class _ThreadList extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Text(
-<<<<<<< HEAD
-              'To send a story to WAI, use the "Ask WAI" button in Feed or '
-              'Discover.',
-=======
               'Ask WAI from a story card or from your Latest developments, '
               'or pick an area with the pencil button.',
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
               style: GoogleFonts.inter(
                 color: AppColors.textMuted,
                 fontSize: 12,
@@ -205,8 +167,6 @@ class _ThreadList extends StatelessWidget {
   }
 }
 
-<<<<<<< HEAD
-=======
 /// Sohbet türünün simgesi (haber sohbetinde haberin görseli gösterilir).
 IconData _modeIcon(WaiThread thread) => switch (thread.mode) {
   WaiMode.story => Icons.article_outlined,
@@ -214,17 +174,13 @@ IconData _modeIcon(WaiThread thread) => switch (thread.mode) {
   WaiMode.area => categoryIcon(thread.area ?? ''),
 };
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 class _ThreadTile extends StatelessWidget {
   const _ThreadTile({
     required this.title,
     required this.preview,
     required this.time,
     required this.image,
-<<<<<<< HEAD
-=======
     required this.icon,
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     required this.selected,
     required this.onTap,
   });
@@ -233,10 +189,7 @@ class _ThreadTile extends StatelessWidget {
   final String preview;
   final String time;
   final String? image;
-<<<<<<< HEAD
-=======
   final IconData icon;
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   final bool selected;
   final VoidCallback onTap;
 
@@ -258,19 +211,9 @@ class _ThreadTile extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: image == null
-<<<<<<< HEAD
-                  ? const GradientOrb(
-                      size: 44,
-                      child: Icon(
-                        Icons.auto_awesome_rounded,
-                        size: 18,
-                        color: Colors.white,
-                      ),
-=======
                   ? GradientOrb(
                       size: 44,
                       child: Icon(icon, size: 18, color: Colors.white),
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                     )
                   : Image.asset(
                       image!,
@@ -343,25 +286,18 @@ class _ChatPanel extends StatefulWidget {
 }
 
 class _ChatPanelState extends State<_ChatPanel> {
-<<<<<<< HEAD
-  static const _suggestions = [
-=======
   static const _storySuggestions = [
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     'Simplify this',
     'Why does it matter?',
     "What's the counterargument?",
     'What are the sources?',
   ];
-<<<<<<< HEAD
-=======
   static const _overviewSuggestions = [
     'Summarize the most striking',
     'What matters most for me?',
     'How are these connected?',
     'What should I watch next?',
   ];
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
@@ -377,13 +313,6 @@ class _ChatPanelState extends State<_ChatPanel> {
     super.dispose();
   }
 
-<<<<<<< HEAD
-  void _send([String? text]) {
-    final value = text ?? _input.text;
-    if (value.trim().isEmpty) return;
-    widget.state.send(value);
-    _input.clear();
-=======
   /// WAI yazarken gönderilmez; yazılan metin kutuda kalır. Kutu bu sırada
   /// salt okunur yapılmaz: odaktaki alanın readOnly'si değişince Flutter web
   /// motorunun debug kontrolü patlıyor ve debugger sayfayı donduruyordu.
@@ -392,7 +321,6 @@ class _ChatPanelState extends State<_ChatPanel> {
     if (value.trim().isEmpty || widget.state.waiTyping) return;
     widget.state.send(value);
     if (text == null) _input.clear();
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     _inputFocus.requestFocus();
   }
 
@@ -427,10 +355,6 @@ class _ChatPanelState extends State<_ChatPanel> {
   Widget build(BuildContext context) {
     final state = widget.state;
     if (state.activeThreadId == null) return _StartPanel(state: state);
-<<<<<<< HEAD
-    final messages = state.activeMessages;
-    final busy = state.waiTyping;
-=======
     final thread = state.activeThread!;
     final messages = thread.messages;
     final busy = state.waiTyping;
@@ -442,7 +366,6 @@ class _ChatPanelState extends State<_ChatPanel> {
       WaiMode.latest => 'Ask about your latest developments…',
       WaiMode.area => 'Ask about ${thread.title}…',
     };
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     _scrollToEndIfNeeded();
 
     return Container(
@@ -454,11 +377,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-<<<<<<< HEAD
-          _ChatHeader(news: state.activeThreadArticle),
-=======
           _ChatHeader(thread: thread),
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
           const Divider(color: AppColors.border, height: 1),
           Expanded(
             child: ListView(
@@ -481,20 +400,12 @@ class _ChatPanelState extends State<_ChatPanel> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-<<<<<<< HEAD
-                  for (final s in _suggestions)
-=======
                   for (final s in suggestions)
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                     PillButton(
                       label: s,
                       selected: false,
                       dense: true,
-<<<<<<< HEAD
-                      onTap: () => busy ? null : _send(s),
-=======
                       onTap: () => _send(s),
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                     ),
                 ],
               ),
@@ -524,25 +435,14 @@ class _ChatPanelState extends State<_ChatPanel> {
                       controller: _input,
                       focusNode: _inputFocus,
                       autofocus: true,
-<<<<<<< HEAD
-                      readOnly: busy,
-                      onSubmitted: (_) => busy ? null : _send(),
-=======
                       onSubmitted: (_) => _send(),
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                       cursorColor: AppColors.accentLight,
                       style: GoogleFonts.inter(
                         color: AppColors.textPrimary,
                         fontSize: 15,
                       ),
                       decoration: InputDecoration(
-<<<<<<< HEAD
-                        hintText: busy
-                            ? 'WAI is answering…'
-                            : 'Ask WAI anything about this story…',
-=======
                         hintText: busy ? 'WAI is answering…' : hint,
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                         hintStyle: GoogleFonts.inter(
                           color: AppColors.textMuted,
                           fontSize: 15,
@@ -584,15 +484,9 @@ class _ChatPanelState extends State<_ChatPanel> {
 }
 
 class _ChatHeader extends StatelessWidget {
-<<<<<<< HEAD
-  const _ChatHeader({required this.news});
-
-  final Article? news;
-=======
   const _ChatHeader({required this.thread});
 
   final WaiThread thread;
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 
   @override
   Widget build(BuildContext context) {
@@ -643,11 +537,7 @@ class _ChatHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-<<<<<<< HEAD
-                  news?.title ?? 'Story',
-=======
                   thread.title,
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.inter(
@@ -669,13 +559,9 @@ class _ChatHeader extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     Text(
-<<<<<<< HEAD
-                      'News assistant · online',
-=======
                       thread.subtitle.isNotEmpty
                           ? thread.subtitle
                           : 'News assistant · online',
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                       style: GoogleFonts.inter(
                         color: AppColors.textMuted,
                         fontSize: 12,
@@ -876,30 +762,21 @@ class _AssistantBubble extends StatelessWidget {
           ),
         ],
       );
-<<<<<<< HEAD
-    } else {
-      content = SelectableText(
-        message.streaming ? '${message.text}▍' : message.text,
-=======
     } else if (message.streaming) {
       content = SelectableText(
         '${message.text}▍',
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
         style: GoogleFonts.sourceSerif4(
           color: AppColors.textPrimary,
           fontSize: 16.5,
           height: 1.65,
         ),
       );
-<<<<<<< HEAD
-=======
     } else {
       // WAI maddeler ve **kalın** kullanabiliyor; [1] gibi numaralar sağdaki
       // "What WAI read" listesine karşılık gelir.
       content = SelectionArea(
         child: SimpleMarkdown(message.text, fontSize: 16),
       );
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     }
 
     return Row(
@@ -1026,10 +903,7 @@ class _StartPanelState extends State<_StartPanel> {
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
-<<<<<<< HEAD
-=======
     if (state.hasServerUser) return _AreaPicker(state: state);
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     final Widget list;
     if (state.feed.isEmpty && state.feedError != null) {
       list = ErrorView(error: state.feedError!, onRetry: state.loadMoreFeed);
@@ -1425,8 +1299,6 @@ class _CapabilitiesPanel extends StatelessWidget {
     );
   }
 }
-<<<<<<< HEAD
-=======
 
 // ---------------------------------------------------------------------------
 // Alan seçimi (WAI sekmesinden açılan sohbet)
@@ -1795,4 +1667,3 @@ class _SourcesPanel extends StatelessWidget {
     );
   }
 }
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)

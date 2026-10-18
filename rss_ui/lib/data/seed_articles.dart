@@ -64,12 +64,8 @@ const seedArticles = <Article>[
   Article(
     id: 'seed-5',
     source: 'GameSpot',
-<<<<<<< HEAD
-    title: 'Nintendo Switch 3 Reveal: 4K Gaming, Backward Compatibility Confirmed',
-=======
     title:
         'Nintendo Switch 3 Reveal: 4K Gaming, Backward Compatibility Confirmed',
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     url: 'https://example.com/switch3',
     author: 'Emily Nakamura',
     publishedAt: null,
@@ -114,12 +110,8 @@ const seedArticles = <Article>[
   Article(
     id: 'seed-8',
     source: 'TechCrunch',
-<<<<<<< HEAD
-    title: 'SpaceX Starlink V3 Satellites Promise 1Gbps Direct-to-Phone Internet',
-=======
     title:
         'SpaceX Starlink V3 Satellites Promise 1Gbps Direct-to-Phone Internet',
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     url: 'https://example.com/starlink-v3',
     author: 'Rachel Kim',
     publishedAt: null,

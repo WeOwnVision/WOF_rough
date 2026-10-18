@@ -198,8 +198,6 @@ class CategoryBadge extends StatelessWidget {
   }
 }
 
-<<<<<<< HEAD
-=======
 /// Kişisel akıştaki uygunluk puanı; tarih sıralı (fallback) akışta sunucu
 /// herkese sabit 50 verdiği için gösterilmez.
 int? matchScore(Article a) =>
@@ -248,7 +246,6 @@ class MatchBadge extends StatelessWidget {
   }
 }
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 /// Kaydet düğmesi; durumu [AppState]'ten okur.
 class BookmarkButton extends StatelessWidget {
   const BookmarkButton(this.news, {super.key, this.size = 20});
@@ -331,11 +328,8 @@ class NewsGridCard extends StatelessWidget {
                     top: 12,
                     child: CategoryBadge(news.category),
                   ),
-<<<<<<< HEAD
-=======
                   if (matchScore(news) case final score?)
                     Positioned(right: 12, top: 12, child: MatchBadge(score)),
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                 ],
               ),
             ),

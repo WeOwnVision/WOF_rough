@@ -25,12 +25,9 @@ class Article {
     this.microTags = const [],
     this.tldr,
     this.cleanText,
-<<<<<<< HEAD
-=======
     this.personalScore,
     this.isLiked,
     this.matchedFollows = const [],
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   });
 
   factory Article.fromJson(Map<String, dynamic> json) {
@@ -48,12 +45,9 @@ class Article {
       microTags: _stringList(json['micro_tags']),
       tldr: json['tldr'] as String?,
       cleanText: json['clean_text'] as String?,
-<<<<<<< HEAD
-=======
       personalScore: (json['personal_score'] as num?)?.toInt(),
       isLiked: json['is_liked'] as bool?,
       matchedFollows: _stringList(json['matched_follows']),
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     );
   }
 
@@ -74,8 +68,6 @@ class Article {
   /// Haberin tam metni; yalnızca `getArticle` yanıtında gelir.
   final String? cleanText;
 
-<<<<<<< HEAD
-=======
   /// Kişisel akıştaki uygunluk puanı (0-100); yalnızca
   /// `/api/feed/personalized` yanıtında gelir.
   final int? personalScore;
@@ -87,7 +79,6 @@ class Article {
   /// "Revolut"); yalnızca kişisel akışta gelir.
   final List<String> matchedFollows;
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   Map<String, dynamic> toJson() => {
     'id': id,
     'source': source,
@@ -100,12 +91,9 @@ class Article {
     'micro_tags': microTags,
     if (tldr != null) 'tldr': tldr,
     if (cleanText != null) 'clean_text': cleanText,
-<<<<<<< HEAD
-=======
     if (personalScore != null) 'personal_score': personalScore,
     if (isLiked != null) 'is_liked': isLiked,
     if (matchedFollows.isNotEmpty) 'matched_follows': matchedFollows,
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   };
 }
 
@@ -204,24 +192,17 @@ class ArticleComment {
   final DateTime? createdAt;
 }
 
-<<<<<<< HEAD
-/// `/api/users/login` ve `/api/users` öğesi.
-=======
 /// `/api/users/login`, `/api/users` ve `/api/users/{id}/preferences` öğesi.
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 class AppUser {
   const AppUser({
     required this.id,
     required this.username,
     this.avatarUrl,
     this.createdAt,
-<<<<<<< HEAD
-=======
     this.onboardingCompleted = false,
     this.preferredMacroTags = const [],
     this.preferredMicroTags = const [],
     this.interestContext,
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   });
 
   factory AppUser.fromJson(Map<String, dynamic> json) => AppUser(
@@ -229,21 +210,16 @@ class AppUser {
     username: (json['username'] as String?) ?? '',
     avatarUrl: json['avatar_url'] as String?,
     createdAt: _date(json['created_at']),
-<<<<<<< HEAD
-=======
     onboardingCompleted: json['onboarding_completed'] == true,
     preferredMacroTags: _stringList(json['preferred_macro_tags']),
     preferredMicroTags: _stringList(json['preferred_micro_tags']),
     interestContext: json['interest_context'] as String?,
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   );
 
   final String id;
   final String username;
   final String? avatarUrl;
   final DateTime? createdAt;
-<<<<<<< HEAD
-=======
 
   /// İlgi alanlarını seçti mi? `false` ise onboarding ekranı açılır.
   final bool onboardingCompleted;
@@ -525,7 +501,6 @@ class WaiOpening {
 
   /// WAI'nin okuduğu haberler; cevaplardaki [1], [2] bu sıraya karşılık gelir.
   final List<Article> sources;
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 }
 
 /// WAI sohbet geçmişindeki bir tur.

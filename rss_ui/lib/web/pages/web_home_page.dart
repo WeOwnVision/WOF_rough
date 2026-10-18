@@ -59,13 +59,10 @@ class _WebHomePageState extends State<WebHomePage> {
 
   Widget _content(List<Article> feed) {
     final top = feed.first;
-<<<<<<< HEAD
-=======
     final personalBrief = _state.hasServerUser;
     // Giriş yapılmışsa üstteki haberler "Latest developments" kartında ve
     // Daily Brief listesinde; ızgara onlardan sonrakilerle devam eder.
     final briefStories = personalBrief ? _state.briefArticles.length : 1;
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(40, 32, 40, 56),
       child: Center(
@@ -75,24 +72,6 @@ class _WebHomePageState extends State<WebHomePage> {
             builder: (context, c) {
               final wide = c.maxWidth >= 1040;
               final columns = wide ? 4 : 3;
-<<<<<<< HEAD
-              final daily = DailySummaryCard(
-                article: top,
-                large: true,
-                horizontal: !wide,
-                onTap: () => showArticleDialog(context, top),
-              );
-              final brief = WrittenSummaryCard(
-                sources: _state.briefArticles,
-                brief: _state.brief,
-                loading: _state.briefLoading,
-                error: _state.briefError,
-                onRetry: _state.loadBrief,
-                onReadMore: () => _showBrief(context),
-                large: true,
-                previewHeight: wide ? 470 : 300,
-              );
-=======
               final daily = personalBrief
                   ? _latestCard(context, top, wide)
                   : DailySummaryCard(
@@ -122,7 +101,6 @@ class _WebHomePageState extends State<WebHomePage> {
                       previewHeight: wide ? 470 : 300,
                     );
               final personal = _state.feedIsPersonal && !_state.feedIsFallback;
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -142,17 +120,6 @@ class _WebHomePageState extends State<WebHomePage> {
                   ],
                   const SizedBox(height: 44),
                   SectionTitle(
-<<<<<<< HEAD
-                    'Trending',
-                    trailing: LinkButton(
-                      'See all',
-                      onTap: () => _state.goTo(AppState.navDiscover),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  _NewsGrid(
-                    news: feed.skip(1).take(columns).toList(),
-=======
                     personal ? 'Picked for you' : 'Trending',
                     trailing: personal
                         ? LinkButton(
@@ -167,7 +134,6 @@ class _WebHomePageState extends State<WebHomePage> {
                   const SizedBox(height: 20),
                   _NewsGrid(
                     news: feed.skip(briefStories).take(columns).toList(),
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                     columns: columns,
                   ),
                   const SizedBox(height: 44),
@@ -188,10 +154,6 @@ class _WebHomePageState extends State<WebHomePage> {
     );
   }
 
-<<<<<<< HEAD
-  void _showBrief(BuildContext context) {
-    final sources = _state.briefArticles;
-=======
   /// "Latest developments": sunucunun en üstteki haberlerden yazdığı başlık
   /// ve paragraf. Yüklenirken ya da yazılamazsa en üstteki haber gösterilir.
   Widget _latestCard(BuildContext context, Article top, bool wide) {
@@ -229,7 +191,6 @@ class _WebHomePageState extends State<WebHomePage> {
   void _showBrief(BuildContext context) {
     final sources = _state.briefArticles;
     final digest = _state.hasServerUser;
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     showDialog<void>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.7),
@@ -251,13 +212,9 @@ class _WebHomePageState extends State<WebHomePage> {
                   children: [
                     Expanded(
                       child: Text(
-<<<<<<< HEAD
-                        'Cross-Source Brief',
-=======
                         digest
                             ? (_state.briefTitle ?? 'Latest developments')
                             : 'Cross-Source Brief',
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                         style: GoogleFonts.playfairDisplay(
                           color: AppColors.textPrimary,
                           fontSize: 30,
@@ -277,25 +234,18 @@ class _WebHomePageState extends State<WebHomePage> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-<<<<<<< HEAD
-                  'WAI compared these stories for shared facts, '
-                  'contradictions and unverified claims.',
-=======
                   digest
                       ? 'WAI wrote this from the ${sources.length} stories '
                             'ranked highest for you. Each story\'s own '
                             'summary is in your Daily Brief.'
                       : 'WAI compared these stories for shared facts, '
                             'contradictions and unverified claims.',
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                   style: GoogleFonts.inter(
                     color: AppColors.textMuted,
                     fontSize: 13.5,
                   ),
                 ),
                 const SizedBox(height: 16),
-<<<<<<< HEAD
-=======
                 // Kişisel kartta önce paragraf, sonra kaynak haberler;
                 // karşılaştırmalı özette önce karşılaştırılan haberler.
                 if (digest) ...[
@@ -304,25 +254,17 @@ class _WebHomePageState extends State<WebHomePage> {
                   const Divider(color: AppColors.border),
                   const SizedBox(height: 16),
                 ],
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                 for (final a in sources)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: NewsListTile(a, thumbSize: 48),
                   ),
-<<<<<<< HEAD
-                const SizedBox(height: 16),
-                const Divider(color: AppColors.border),
-                const SizedBox(height: 16),
-                SimpleMarkdown(_state.brief ?? '', fontSize: 16.5),
-=======
                 if (!digest) ...[
                   const SizedBox(height: 16),
                   const Divider(color: AppColors.border),
                   const SizedBox(height: 16),
                   SimpleMarkdown(_state.brief ?? '', fontSize: 16.5),
                 ],
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
               ],
             ),
           ),

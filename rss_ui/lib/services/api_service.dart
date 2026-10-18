@@ -8,12 +8,8 @@ import '../models/api_models.dart';
 /// Intelligence RSS Platform istemcisi.
 ///
 /// Flutter'a bağımlı değildir; `bin/` altındaki betikler `dart run` ile de
-<<<<<<< HEAD
-/// kullanabilir. Adres derleme sırasında verilir:
-=======
 /// kullanabilir. Varsayılan adres bu bilgisayarda çalışan yerel sunucudur;
 /// tünel gibi başka bir adres derleme sırasında verilir:
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 ///
 ///     flutter run -d chrome --dart-define=API_BASE_URL=https://xyz.loca.lt
 class ApiService {
@@ -23,10 +19,7 @@ class ApiService {
     this.logger,
     this.timeout = const Duration(seconds: 30),
     this.slowTimeout = const Duration(seconds: 90),
-<<<<<<< HEAD
-=======
     this.digestTimeout = const Duration(seconds: 180),
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   }) : baseUrl = baseUrl.endsWith('/')
            ? baseUrl.substring(0, baseUrl.length - 1)
            : baseUrl,
@@ -34,12 +27,8 @@ class ApiService {
 
   static const defaultBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-<<<<<<< HEAD
-    defaultValue: 'https://tame-mails-march.loca.lt',
-=======
     // "localhost" önce IPv6'yı dener; sunucu yalnızca IPv4'te dinliyor.
     defaultValue: 'http://127.0.0.1:8000',
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   );
 
   /// Sunucudaki test kayıtları; akışta ve aramada gösterilmez.
@@ -61,12 +50,9 @@ class ApiService {
   /// sunucuda model yüklendiği için ~45 sn sürebiliyor.
   final Duration slowTimeout;
 
-<<<<<<< HEAD
-=======
   /// Günün özeti: ilk üretimde Tavily doğrulaması + uzun model yanıtı.
   final Duration digestTimeout;
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   Map<String, String> get _headers => const {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -167,8 +153,6 @@ class ApiService {
   }
 
   // ==========================================================================
-<<<<<<< HEAD
-=======
   // Kişiselleştirme
   // ==========================================================================
 
@@ -349,7 +333,6 @@ class ApiService {
   }
 
   // ==========================================================================
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   // POST
   // ==========================================================================
 
@@ -426,8 +409,6 @@ class ApiService {
     });
   }
 
-<<<<<<< HEAD
-=======
   /// WAI sohbetini açar. [mode]: `story` (haberin tam metni), `latest`
   /// (ana sayfadaki son gelişmeler) ya da `area` (seçilen kategori ya da alt
   /// konunun son haberleri). WAI kapsamı okuyup ilk mesajı kendisi yazar.
@@ -479,7 +460,6 @@ class ApiService {
     });
   }
 
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   /// [chatStream]'in tamamlanmış yanıtı.
   Future<String> chatWithArticle(
     String articleId, {
@@ -535,18 +515,12 @@ class ApiService {
     logger?.call('[$method] $uri');
     final http.Response res;
     try {
-<<<<<<< HEAD
-      final req = method == 'GET'
-          ? _client.get(uri, headers: _headers)
-          : _client.post(uri, headers: _headers, body: jsonEncode(body));
-=======
       final req = switch (method) {
         'GET' => _client.get(uri, headers: _headers),
         'PUT' => _client.put(uri, headers: _headers, body: jsonEncode(body)),
         'DELETE' => _client.delete(uri, headers: _headers),
         _ => _client.post(uri, headers: _headers, body: jsonEncode(body)),
       };
->>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
       res = await req.timeout(timeout ?? this.timeout);
     } on TimeoutException {
       throw ApiException(ApiErrorKind.timeout, 'Request timed out: $uri');
