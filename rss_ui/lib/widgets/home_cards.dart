@@ -117,7 +117,7 @@ class DailySummaryCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Image.asset(article.image, fit: BoxFit.cover),
+            ArticleCoverImage(image: article.image, fit: BoxFit.cover),
             Positioned(
               left: 12,
               top: 12,

@@ -12,6 +12,7 @@ Modularized into domain-specific APIRouter packages under `routers/`:
   - routers.wai           : WAI assistant chats (story / latest developments / area), model writes the opening
 """
 
+import os
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -44,15 +45,17 @@ from routers.users import get_personalized_feed_data
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Run PostgreSQL schema migrations on startup
     try:
         from migrate_v1_tables import run_migration
         run_migration()
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger("main").warning("Postgres migration note: %s", e)
     yield
 
 
-app = FastAPI(title="Intelligence Newsroom API", lifespan=lifespan)
+app = FastAPI(title="W.O.F News Intelligence API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -85,3 +88,14 @@ __all__ = [
     "prepare_synthesis_context",
     "get_personalized_feed_data",
 ]
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=False,
+        proxy_headers=True,
+        forwarded_allow_ips=os.getenv("FORWARDED_ALLOW_IPS", "*")
+    )

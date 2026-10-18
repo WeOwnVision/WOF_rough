@@ -483,9 +483,77 @@ class ApiService {
     });
   }
 
-  /// [synthesizeStream]'in tamamlanmış yanıtı (Markdown).
+  /// [synthesizeStream]'in tamamlanmış yanıtı.
   Future<String> synthesizeArticles(List<String> articleIds) =>
       synthesizeStream(articleIds).join();
+
+  /// Sistem telemetrisi: Nebius Token Factory, Nemotron modelleri ve Tavily kota/kullanımı.
+  Future<Map<String, dynamic>> getTelemetry() async {
+    final json = await _getJson(_uri('/api/system/telemetry'));
+    return _map(json);
+  }
+
+  /// Tavily + Nemotron 3 Ultra canlı doğrulama ve sentez akışı.
+  Stream<DeepInspectEvent> deepInspectStream(String articleId) async* {
+    final uri = _uri('/api/articles/${_id(articleId)}/deep-inspect');
+    final req = http.Request('POST', uri)..headers.addAll(_headers);
+    final res = await _client.send(req).timeout(digestTimeout);
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      final text = await res.stream.bytesToString().catchError((_) => '');
+      throw ApiException.fromResponse(res.statusCode, text);
+    }
+
+    final textStream = res.stream.transform(utf8.decoder).timeout(digestTimeout);
+    var buffer = '';
+    var event = '';
+    final data = <String>[];
+
+    await for (final chunk in textStream) {
+      buffer += chunk;
+      var nl = buffer.indexOf('\n');
+      while (nl != -1) {
+        var line = buffer.substring(0, nl);
+        buffer = buffer.substring(nl + 1);
+        if (line.endsWith('\r')) line = line.substring(0, line.length - 1);
+        if (line.isEmpty) {
+          if (data.isNotEmpty) {
+            final payload = data.join('\n');
+            if (payload.trim() != '[DONE]') {
+              yield DeepInspectEvent(
+                event: event.isEmpty ? 'data' : event,
+                data: payload,
+              );
+            }
+          }
+          event = '';
+          data.clear();
+        } else if (line.startsWith('data:')) {
+          data.add(_sseValue(line.substring(5)));
+        } else if (line.startsWith('event:')) {
+          event = line.substring(6).trim();
+        }
+        nl = buffer.indexOf('\n');
+      }
+    }
+  }
+
+  /// Doğrulanmış haber bağlamında soru sorma (/api/articles/{id}/ask).
+  Future<String> askArticle(
+    String articleId, {
+    required String question,
+    List<Map<String, String>> history = const [],
+  }) async {
+    final json = await _postJson(
+      _uri('/api/articles/${_id(articleId)}/ask'),
+      {
+        'question': question.trim(),
+        'history': history,
+      },
+    );
+    final map = _map(json);
+    return (map['answer'] as String?) ?? '';
+  }
 
   void dispose() => _client.close();
 

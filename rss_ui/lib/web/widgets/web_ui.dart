@@ -5,6 +5,7 @@ import '../../models/api_models.dart';
 import '../../models/article_ui.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/common.dart';
 import 'article_dialog.dart';
 
 /// Web sayfalarında paylaşılan bileşenler.
@@ -321,7 +322,7 @@ class NewsGridCard extends StatelessWidget {
                   AnimatedScale(
                     duration: const Duration(milliseconds: 300),
                     scale: hovered ? 1.05 : 1.0,
-                    child: Image.asset(news.image, fit: BoxFit.cover),
+                    child: ArticleCoverImage(image: news.image, fit: BoxFit.cover),
                   ),
                   Positioned(
                     left: 12,
@@ -421,8 +422,8 @@ class NewsListTile extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                news.image,
+              child: ArticleCoverImage(
+                image: news.image,
                 width: thumbSize,
                 height: thumbSize,
                 fit: BoxFit.cover,

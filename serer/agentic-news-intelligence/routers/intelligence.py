@@ -1,6 +1,7 @@
 import uuid
 import json
 import logging
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Tuple
 from fastapi import APIRouter, HTTPException, Query
@@ -119,6 +120,355 @@ def chat_with_article(article_id: str, req: ArticleChatRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
     )
+
+
+class InspectionBroadcaster:
+    """Thread-safe event broadcaster providing single-flight coalescing for deep inspection tasks."""
+    def __init__(self, loop: asyncio.AbstractEventLoop):
+        self.loop = loop
+        self.subscribers: List[asyncio.Queue] = []
+        self.is_done = False
+        self.last_events: List[Tuple[str, str]] = []
+
+    def subscribe(self) -> asyncio.Queue:
+        q = asyncio.Queue()
+        for ev, data in self.last_events:
+            q.put_nowait((ev, data))
+        if not self.is_done:
+            self.subscribers.append(q)
+        return q
+
+    def broadcast(self, event: str, data: str):
+        if self.loop.is_closed():
+            return
+        self.loop.call_soon_threadsafe(self._do_broadcast, event, data)
+
+    def _do_broadcast(self, event: str, data: str):
+        self.last_events.append((event, data))
+        for q in list(self.subscribers):
+            try:
+                q.put_nowait((event, data))
+            except Exception:
+                pass
+
+    def finish(self):
+        if self.loop.is_closed():
+            return
+        self.loop.call_soon_threadsafe(self._do_finish)
+
+    def _do_finish(self):
+        self.is_done = True
+        self.subscribers.clear()
+
+
+_in_flight_broadcasters: Dict[str, InspectionBroadcaster] = {}
+_broadcaster_lock = asyncio.Lock()
+
+
+def map_evidence_to_fact_check_result(
+    article: Dict[str, Any], 
+    card: Optional[Dict[str, Any]], 
+    is_cached: bool = False
+) -> Dict[str, Any]:
+    card = card or {}
+    summary_verdict = (card.get("summary_verdict") or "unverified").lower()
+    
+    # Verdict mapping to match Flutter's badges (isVerified, isPartially, etc.)
+    verdict_display_map = {
+        "supported": "Verified (Supported)",
+        "contradicted": "Contradicted (Disproven)",
+        "disputed": "Partially Verified (Disputed)",
+        "unverified_yet": "Unverified (Breaking / Fresh Origin)",
+        "unverified": "Unverified (Single Source)"
+    }
+    fact_check_verdict = verdict_display_map.get(summary_verdict, "Unverified")
+    
+    claim_matrix = []
+    for c in card.get("claims", []):
+        verdict = (c.get("verdict") or "unverified").lower()
+        if verdict == "supported":
+            flutter_status = "supported"
+        elif verdict in ("contradicted", "disputed"):
+            flutter_status = "contested"
+        else:
+            flutter_status = "unverified"
+
+        sup = c.get("support_evidence", [])
+        con = c.get("contradict_evidence", [])
+        
+        evidence_summary = ""
+        source_url = None
+        if sup:
+            best_sup = sup[0]
+            source_url = best_sup.get("url")
+            indep = c.get("independent_support_origins", 1)
+            span_text = best_sup.get("span", "").strip()
+            domain = best_sup.get("domain", "web")
+            evidence_summary = f"Corroborated by {domain}: \"{span_text}\" ({indep} independent origin(s))"
+        elif con:
+            best_con = con[0]
+            source_url = best_con.get("url")
+            span_text = best_con.get("span", "").strip()
+            domain = best_con.get("domain", "web")
+            evidence_summary = f"Disputed by {domain}: \"{span_text}\""
+        elif c.get("official_confirmed"):
+            evidence_summary = "Confirmed by official corporate / institutional communications."
+        else:
+            evidence_summary = "No third-party corroborating evidence found in external web horizon."
+            
+        claim_matrix.append({
+            "claim": c.get("claim", ""),
+            "status": flutter_status,
+            "evidence_summary": evidence_summary,
+            "source_url": source_url
+        })
+        
+    origins = card.get("origin_breakdown", [])
+    indep_count = card.get("independent_origins_count", 1)
+    total_sources = card.get("total_sources", 1)
+    
+    origin_strs = []
+    for o in origins:
+        o_name = o.get("origin") or o.get("name") or "Primary Outlet"
+        o_type = o.get("type", "outlet")
+        origin_strs.append(f"{o_name} ({o_type})")
+        
+    wire_info = f"Identified {indep_count} independent reporting origin(s) across {total_sources} consulted source(s)."
+    if origin_strs:
+        wire_info += f" Syndication profile: {', '.join(origin_strs)}."
+        
+    if indep_count <= 1:
+        wire_info += " Single-source origin detected; potential circular syndication bias across republishers."
+    else:
+        wire_info += " Multi-source independent corroboration observed across distinct news desks."
+        
+    sources_consulted = []
+    for cit in card.get("raw_evidence_citations", []):
+        if cit.get("url"):
+            sources_consulted.append({
+                "title": cit.get("title") or cit.get("domain") or "External Verification Source",
+                "url": cit.get("url"),
+                "domain": cit.get("domain") or extract_domain(cit.get("url")),
+                "snippet": cit.get("snippet", "")
+            })
+            
+    title = article.get("title", "")
+    exec_synthesis = (
+        f"Deep inspection for '{title}'. Overall assessment: {fact_check_verdict.upper()}. "
+        f"{wire_info} "
+        f"Evaluated {len(claim_matrix)} atomic assertions against Tavily live web consensus."
+    )
+    
+    return {
+        "executive_synthesis": exec_synthesis,
+        "fact_check_verdict": fact_check_verdict,
+        "claim_matrix": claim_matrix,
+        "bias_and_nuance": wire_info,
+        "is_cached": is_cached,
+        "limited_source": indep_count <= 1,
+        "model_used": "Tavily Extract + Nebius Fast Engine",
+        "sources_consulted": sources_consulted
+    }
+
+
+def _run_deep_inspection_sync(broadcaster: InspectionBroadcaster, art_id: str, art_doc: Dict[str, Any]):
+    try:
+        broadcaster.broadcast("status", "Extracting core factual assertions from article...")
+        broadcaster.broadcast("status", "Querying Tavily web verification horizon (3 search angles)...")
+        
+        evidence_card = verify_cluster_evidence([art_doc], cluster_id=art_id)
+        
+        broadcaster.broadcast("status", "Synthesizing consensus and checking wire syndication...")
+        
+        fact_check = map_evidence_to_fact_check_result(art_doc, evidence_card, is_cached=False)
+        
+        try:
+            with get_db() as cur:
+                cur.execute("""
+                    UPDATE articles 
+                    SET fact_check_cache = %s::jsonb 
+                    WHERE id = %s;
+                """, (json.dumps(fact_check), art_id))
+        except Exception as db_e:
+            logger.warning("[Deep Inspect] Failed to save cache to DB: %s", db_e)
+            
+        broadcaster.broadcast("final", json.dumps(fact_check))
+    except Exception as e:
+        logger.error("[Deep Inspect] Pipeline error for article %s: %s", art_id, e, exc_info=True)
+        broadcaster.broadcast("error", json.dumps({"message": f"Deep inspection error: {str(e)}"}))
+    finally:
+        broadcaster.finish()
+
+
+@router.api_route("/api/articles/{article_id}/deep-inspect", methods=["GET", "POST"])
+async def deep_inspect_article(article_id: str):
+    """
+    On-demand Tavily deep inspection & fact-checking stream for Flutter UI.
+    Uses PostgreSQL as single source of truth and implements single-flight request coalescing.
+    """
+    try:
+        valid_id = validate_uuid(article_id, "article_id")
+    except Exception:
+        async def err_gen():
+            yield f"event: error\ndata: {json.dumps({'message': 'Invalid article ID'})}\n\n"
+        return StreamingResponse(err_gen(), media_type="text/event-stream")
+
+    with get_db() as cur:
+        cur.execute("""
+            SELECT id, source_feed, title, tldr, clean_text, original_url, macro_tag, published_at, fact_check_cache
+            FROM articles WHERE id = %s;
+        """, (valid_id,))
+        row = cur.fetchone()
+
+    if not row:
+        async def not_found_gen():
+            yield f"event: error\ndata: {json.dumps({'message': 'Article not found in PostgreSQL'})}\n\n"
+        return StreamingResponse(not_found_gen(), media_type="text/event-stream")
+
+    cached_fc = row[8]
+    if cached_fc:
+        fc = cached_fc if isinstance(cached_fc, dict) else json.loads(cached_fc)
+        fc["is_cached"] = True
+        async def cached_gen():
+            yield f"event: status\ndata: Retrieved verified receipts from local PostgreSQL cache\n\n"
+            yield f"event: final\ndata: {json.dumps(fc)}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(
+            cached_gen(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
+        )
+
+    art_doc = {
+        "id": str(row[0]),
+        "source": row[1],
+        "title": row[2],
+        "tldr": row[3] or "",
+        "text": row[4] or "",
+        "url": row[5],
+        "macro_tag": row[6] or "Tech",
+        "published_at": row[7].isoformat() if hasattr(row[7], "isoformat") else str(row[7])
+    }
+
+    loop = asyncio.get_running_loop()
+    async with _broadcaster_lock:
+        if valid_id in _in_flight_broadcasters and not _in_flight_broadcasters[valid_id].is_done:
+            broadcaster = _in_flight_broadcasters[valid_id]
+            q = broadcaster.subscribe()
+        else:
+            broadcaster = InspectionBroadcaster(loop)
+            _in_flight_broadcasters[valid_id] = broadcaster
+            q = broadcaster.subscribe()
+            loop.run_in_executor(None, _run_deep_inspection_sync, broadcaster, valid_id, art_doc)
+
+    async def stream_events():
+        try:
+            while True:
+                ev, data = await q.get()
+                yield f"event: {ev}\ndata: {data}\n\n"
+                if ev in ("final", "error"):
+                    break
+            yield "data: [DONE]\n\n"
+        finally:
+            async with _broadcaster_lock:
+                if valid_id in _in_flight_broadcasters and _in_flight_broadcasters[valid_id].is_done:
+                    _in_flight_broadcasters.pop(valid_id, None)
+
+    return StreamingResponse(
+        stream_events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
+    )
+
+
+@router.post("/api/articles/{article_id}/ask")
+def ask_article(article_id: str, req: ArticleChatRequest):
+    """Answers user questions strictly grounded in article text and verified evidence receipts."""
+    valid_id = validate_uuid(article_id, "article_id")
+    question = (req.question or "").strip()
+    history = req.history or []
+    if not question:
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+        
+    with get_db() as cur:
+        cur.execute("""
+            SELECT title, clean_text, fact_check_cache 
+            FROM articles WHERE id = %s;
+        """, (valid_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Article not found.")
+            
+    title, clean_text, fact_check_cache = row[0], row[1], row[2]
+    
+    evidence_context = ""
+    if fact_check_cache:
+        fc = fact_check_cache if isinstance(fact_check_cache, dict) else json.loads(fact_check_cache)
+        claims = fc.get("claim_matrix") or []
+        verdict = fc.get("fact_check_verdict", "Unverified")
+        evidence_context = f"\nVERIFIED FACT-CHECK VERDICT: {verdict}\nCLAIMS & RECEIPTS:\n"
+        for c in claims:
+            evidence_context += f"- [{c.get('status', 'unverified').upper()}] {c.get('claim')}: {c.get('evidence_summary')}\n"
+            
+    system_msg = {
+        "role": "system",
+        "content": (
+            f"You are FeedProof's grounded news copilot answering questions regarding the article '{title}'.\n"
+            f"Answer accurately and concisely using ONLY the article content and verified evidence receipts below.\n"
+            f"If something is unverified or not mentioned, state it directly.\n\n"
+            f"--- ARTICLE CONTENT ---\n{clean_text[:6000]}\n"
+            f"{evidence_context}"
+        )
+    }
+    
+    bounded_hist = [
+        {"role": h.role, "content": h.content}
+        for h in history[-4:] if h.content
+    ]
+    messages = [system_msg, *bounded_hist, {"role": "user", "content": question}]
+    
+    try:
+        resp = ai_client.chat.completions.create(
+            model=FAST_MODEL,
+            messages=messages,
+            temperature=0.2,
+            max_tokens=350,
+            timeout=8.0
+        )
+        answer = resp.choices[0].message.content.strip()
+        return {"answer": answer}
+    except Exception as e:
+        logger.error("Error answering article question: %s", e)
+        return {"answer": f"Based on '{title}': {clean_text[:300]}..."}
+
+
+@router.get("/api/system/telemetry")
+def get_system_telemetry():
+    """Returns complete system health, database metrics, and Tavily telemetry."""
+    article_count = 0
+    with get_db() as cur:
+        try:
+            cur.execute("SELECT count(*) FROM articles;")
+            r = cur.fetchone()
+            if r:
+                article_count = r[0]
+        except Exception:
+            pass
+            
+    tavily_stats = get_tavily_telemetry_stats()
+    
+    return {
+        "status": "healthy",
+        "database": "PostgreSQL + pgvector (active)",
+        "article_count": article_count,
+        "models": {
+            "fast_model": FAST_MODEL,
+            "reasoning_model": REASONING_MODEL
+        },
+        "tavily": tavily_stats,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
 
 
 def _compute_deterministic_cluster_id(article_ids: List[str]) -> str:

@@ -189,3 +189,51 @@ class CircleIconButton extends StatelessWidget {
     );
   }
 }
+
+/// Haberin görseli: çözümlenmiş HTTP linkiyse `Image.network`, yerel yer tutucuysa `Image.asset`.
+class ArticleCoverImage extends StatelessWidget {
+  const ArticleCoverImage({
+    super.key,
+    required this.image,
+    this.fit = BoxFit.cover,
+    this.width,
+    this.height,
+  });
+
+  final String image;
+  final BoxFit fit;
+  final double? width;
+  final double? height;
+
+  @override
+  Widget build(BuildContext context) {
+    if (image.startsWith('http://') || image.startsWith('https://')) {
+      return Image.network(
+        image,
+        width: width,
+        height: height,
+        fit: fit,
+        errorBuilder: (_, __, ___) => Image.asset(
+          'assets/images/headline.jpg',
+          width: width,
+          height: height,
+          fit: fit,
+        ),
+      );
+    }
+    return Image.asset(
+      image,
+      width: width,
+      height: height,
+      fit: fit,
+    );
+  }
+}
+
+/// AssetImage ya da NetworkImage döndüren yardımcı.
+ImageProvider articleImageProvider(String image) {
+  if (image.startsWith('http://') || image.startsWith('https://')) {
+    return NetworkImage(image);
+  }
+  return AssetImage(image);
+}

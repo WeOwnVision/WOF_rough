@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS articles (
     confidence_score FLOAT,
     on_topic_score FLOAT,
     embedding vector(1024),
+    image_url TEXT,
+    image_status VARCHAR(50),
     is_processed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -52,6 +54,9 @@ ALTER TABLE articles ADD COLUMN IF NOT EXISTS confidence_score FLOAT;
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS on_topic_score FLOAT;
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS macro_tags TEXT[];
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS embedding vector(1024);
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_url TEXT;
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_status VARCHAR(50);
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS fact_check_cache JSONB;
 
 
 -- 3. Social Paragraph Annotations

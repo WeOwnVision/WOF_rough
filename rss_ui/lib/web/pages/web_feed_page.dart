@@ -8,6 +8,7 @@ import '../../models/api_models.dart';
 import '../../models/article_ui.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/common.dart';
 import '../../widgets/state_views.dart';
 import '../widgets/article_dialog.dart';
 import '../widgets/web_ui.dart';
@@ -292,7 +293,7 @@ class _NewsSwipeCard extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Image.asset(news.image, fit: BoxFit.cover),
+                    ArticleCoverImage(image: news.image, fit: BoxFit.cover),
                     const DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(

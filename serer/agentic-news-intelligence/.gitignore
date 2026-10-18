@@ -1,10 +1,15 @@
 # Environment Variables & Secrets (CRITICAL)
 .env
+*.env
 .env*.local
 .env.production
 .env.staging
-*.env
 !.env.example
+
+# Database artifacts
+*.db
+*.db-wal
+*.db-shm
 
 # Python virtual environment & runtime artifacts
 venv/

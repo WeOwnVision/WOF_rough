@@ -171,7 +171,7 @@ def get_personalized_feed_data(user_id: str, page: int = 1, page_size: int = 20)
         # Cold-start guardrail: If onboarding incomplete or preferred_macro_tags empty, return chronological fallback
         if not onboarding_done or not preferred_macros:
             cur.execute("""
-                SELECT id, source_feed, title, original_url, author, published_at, macro_tag, macro_tags, micro_tags, tldr
+                SELECT id, source_feed, title, original_url, author, published_at, macro_tag, macro_tags, micro_tags, tldr, image_url, image_status
                 FROM articles a
                 WHERE a.is_processed = TRUE 
                   AND a.macro_tag IS NOT NULL 
@@ -192,6 +192,8 @@ def get_personalized_feed_data(user_id: str, page: int = 1, page_size: int = 20)
                     "author": r[4], "published_at": r[5], "macro_tag": r[6],
                     "macro_tags": r[7] if r[7] else ([r[6]] if r[6] else []),
                     "micro_tags": r[8] or [], "tldr": r[9],
+                    "image_url": r[10],
+                    "image_status": r[11] or ("resolved" if r[10] else "gradient_fallback"),
                     "personal_score": 50,
                     "is_liked": False,
                     "is_disliked": False
@@ -235,11 +237,14 @@ def get_personalized_feed_data(user_id: str, page: int = 1, page_size: int = 20)
                         THEN %(follow_category_points)s ELSE 0 END)
             )::integer AS personal_score,
             s.is_liked,
-            s.matched_follows
+            s.matched_follows,
+            s.image_url,
+            s.image_status
         FROM (
             SELECT
                 a.id, a.source_feed, a.title, a.original_url, a.author, a.published_at,
                 a.macro_tag, a.macro_tags, a.micro_tags, a.tldr,
+                a.image_url, a.image_status,
                 (
                     LEAST(40, 15 * cardinality(ARRAY(
                         SELECT unnest(a.micro_tags)
@@ -324,7 +329,9 @@ def get_personalized_feed_data(user_id: str, page: int = 1, page_size: int = 20)
                 "personal_score": r[10],
                 "is_liked": bool(r[11]),
                 "is_disliked": False,
-                "matched_follows": list(r[12] or [])
+                "matched_follows": list(r[12] or []),
+                "image_url": r[13],
+                "image_status": r[14] or ("resolved" if r[13] else "gradient_fallback")
             }
             for r in ranked_rows
         ]

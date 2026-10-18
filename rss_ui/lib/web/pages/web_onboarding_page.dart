@@ -472,7 +472,7 @@ class _TasteCard extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Image.asset(article.image, fit: BoxFit.cover),
+                ArticleCoverImage(image: article.image, fit: BoxFit.cover),
                 Positioned(
                   left: 14,
                   top: 14,
@@ -780,8 +780,8 @@ class _PickTile extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                article.image,
+              child: ArticleCoverImage(
+                image: article.image,
                 width: 64,
                 height: 64,
                 fit: BoxFit.cover,

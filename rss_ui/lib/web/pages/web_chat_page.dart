@@ -636,8 +636,8 @@ class _SentNews extends StatelessWidget {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
-                    child: Image.asset(
-                      news.image,
+                    child: ArticleCoverImage(
+                      image: news.image,
                       width: 76,
                       height: 60,
                       fit: BoxFit.cover,
@@ -934,8 +934,8 @@ class _StartPanelState extends State<_StartPanel> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
-                    child: Image.asset(
-                      a.image,
+                    child: ArticleCoverImage(
+                      image: a.image,
                       width: 56,
                       height: 56,
                       fit: BoxFit.cover,
@@ -1158,7 +1158,7 @@ class _ContextPanel extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
               child: AspectRatio(
                 aspectRatio: 16 / 10,
-                child: Image.asset(news.image, fit: BoxFit.cover),
+                child: ArticleCoverImage(image: news.image, fit: BoxFit.cover),
               ),
             ),
             const SizedBox(height: 14),

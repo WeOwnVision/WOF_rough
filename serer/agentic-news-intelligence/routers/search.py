@@ -98,6 +98,7 @@ def execute_hybrid_search(q: str, grouped: bool = False, limit: int = 12):
         GROUP BY id
     )
     SELECT a.id, a.source_feed, a.title, a.tldr, a.micro_tags, a.original_url, a.macro_tag, a.macro_tags,
+           a.image_url, a.image_status,
            fs.rrf_score,
            vm.v_dist,
            fm.fts_rank,
@@ -127,7 +128,7 @@ def execute_hybrid_search(q: str, grouped: bool = False, limit: int = 12):
     explore_matches = []
 
     for r in results:
-        art_id, source, title, tldr, micro_tags, url, macro_tag, macro_tags, rrf_score, v_dist, fts_rank, tag_pts = r
+        art_id, source, title, tldr, micro_tags, url, macro_tag, macro_tags, img_url, img_status, rrf_score, v_dist, fts_rank, tag_pts = r
         m_tags = macro_tags if macro_tags else ([macro_tag] if macro_tag else [])
         tags = micro_tags if micro_tags else []
 
@@ -172,6 +173,8 @@ def execute_hybrid_search(q: str, grouped: bool = False, limit: int = 12):
             "macro_tags": m_tags,
             "micro_tags": tags,
             "url": url,
+            "image_url": img_url,
+            "image_status": img_status or ("resolved" if img_url else "gradient_fallback"),
             "match_tier": "direct" if is_direct else "explore",
             "relevance_score": relevance_score,
             "possibility": possibility_desc,

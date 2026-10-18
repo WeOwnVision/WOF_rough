@@ -390,6 +390,11 @@ def _harvest_query(
         if not published_iso:
             continue
 
+        # Image resolution from Tavily result
+        img_url = r.get("image")
+        if not img_url and isinstance(r.get("images"), list) and r.get("images"):
+            img_url = r.get("images")[0]
+
         # Strict Ingest API contract payload
         payload.append({
             "Site": extract_domain(clean_url),
@@ -397,7 +402,9 @@ def _harvest_query(
             "Link": clean_url,
             "Yazar": r.get("author") or extract_domain(clean_url),
             "Tarih": published_iso,
-            "TamMetin": text
+            "TamMetin": text,
+            "image_url": img_url,
+            "Resim": img_url
         })
 
     if not payload:

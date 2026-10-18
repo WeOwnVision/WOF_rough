@@ -51,13 +51,18 @@ extension ArticleUi on Article {
     return (words / 220).ceil().clamp(1, 99);
   }
 
-  /// Sunucu henüz görsel göndermediği için kategoriye göre yer tutucu.
-  /// Aynı haber her zaman aynı görseli alır.
+  /// Çözümlenen gerçek görsel; yoksa kategoriye göre yer tutucu.
   String get image {
+    final netImg = imageUrl?.trim();
+    if (netImg != null && netImg.startsWith('http')) {
+      return netImg;
+    }
     final options = _placeholders[category] ?? _fallback;
     final hash = id.codeUnits.fold<int>(0, (a, b) => (a * 31 + b) & 0x7fffffff);
     return options[hash % options.length];
   }
+
+  bool get hasNetworkImage => imageUrl != null && imageUrl!.trim().startsWith('http');
 }
 
 const _dir = 'assets/images/news';

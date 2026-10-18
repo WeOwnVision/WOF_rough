@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS evidence_cards (
 -- 5. Articles Worker Reliability & Error Tracking
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS error_message TEXT;
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS retry_count INT DEFAULT 0;
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS fact_check_cache JSONB;
 """
 
 def sanitize_and_prewarm_db() -> None:
