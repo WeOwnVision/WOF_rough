@@ -313,6 +313,49 @@ void main() {
       );
     });
 
+<<<<<<< HEAD
+=======
+    test('waiChatStream sends the scope, sources and recent history', () async {
+      late http.Request sent;
+      final api = ApiService(
+        baseUrl: 'https://api.test',
+        client: MockClient.streaming((req, body) async {
+          sent = http.Request(req.method, req.url)
+            ..bodyBytes = await body.toBytes();
+          return http.StreamedResponse(
+            Stream.fromIterable([
+              utf8.encode('data: {"token": "Yes [1]."}\n\ndata: [DONE]\n\n'),
+            ]),
+            200,
+            headers: {'content-type': 'text/event-stream; charset=utf-8'},
+          );
+        }),
+      );
+      final text = await api
+          .waiChatStream(
+            userId: 'u1',
+            mode: 'area',
+            area: 'AI',
+            sourceIds: ['a1', 'a2'],
+            question: ' Yes please ',
+            history: [
+              for (var i = 0; i < 8; i++) ChatTurn.assistant('turn $i'),
+            ],
+          )
+          .join();
+      expect(text, 'Yes [1].');
+      expect(sent.url.path, '/api/wai/chat');
+      final body = jsonDecode(sent.body) as Map<String, dynamic>;
+      expect(body['mode'], 'area');
+      expect(body['area'], 'AI');
+      expect(body.containsKey('article_id'), isFalse);
+      expect(body['source_ids'], ['a1', 'a2']);
+      expect(body['question'], 'Yes please');
+      expect((body['history'] as List).length, 6);
+      expect((body['history'] as List).first['content'], 'turn 2');
+    });
+
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     test('error event -> server error', () async {
       final api = sse([
         'data: {"token": "Hi"}\n\n',
@@ -439,5 +482,394 @@ void main() {
       expect(c.comment, 'Great');
       expect(c.selectedText, 'Steam Deck 2');
     });
+<<<<<<< HEAD
+=======
+
+    test('login parses onboarding state and preferences', () async {
+      final api = _api(
+        (_) async => _json({
+          'id': 'u1',
+          'username': 'can_test',
+          'avatar_url': null,
+          'onboarding_completed': true,
+          'preferred_macro_tags': ['AI', 'Gaming'],
+          'preferred_micro_tags': ['llm_agents'],
+        }),
+      );
+      final u = await api.login('can_test');
+      expect(u.onboardingCompleted, isTrue);
+      expect(u.preferredMacroTags, ['AI', 'Gaming']);
+      expect(u.preferredMicroTags, ['llm_agents']);
+    });
+
+    test('login without onboarding fields means onboarding needed', () async {
+      final api = _api((_) async => _json({'id': 'u1', 'username': 'x'}));
+      final u = await api.login('x');
+      expect(u.onboardingCompleted, isFalse);
+      expect(u.preferredMacroTags, isEmpty);
+    });
+  });
+
+  group('personalization', () {
+    test('getTaxonomy parses categories and labelled topics', () async {
+      late http.Request sent;
+      final api = _api((req) async {
+        sent = req;
+        return _json([
+          {
+            'macro': 'AI',
+            'display_name': 'Artificial Intelligence',
+            'description': 'Large language models',
+            'micro_tags': [
+              {'tag': 'llm_agents', 'label': 'LLM Agents'},
+            ],
+          },
+        ]);
+      });
+      final t = (await api.getTaxonomy()).single;
+      expect(sent.url.path, '/api/taxonomy');
+      expect(t.macro, 'AI');
+      expect(t.displayName, 'Artificial Intelligence');
+      expect(t.microTags.single.tag, 'llm_agents');
+      expect(t.microTags.single.label, 'LLM Agents');
+    });
+
+    test('updatePreferences sends PUT with tags', () async {
+      late http.Request sent;
+      final api = _api((req) async {
+        sent = req;
+        return _json({
+          'id': 'u1',
+          'username': 'can',
+          'avatar_url': null,
+          'onboarding_completed': true,
+          'preferred_macro_tags': ['AI'],
+          'preferred_micro_tags': ['llm_agents'],
+          'interest_summary': 'Technical news and updates in Ai.',
+        });
+      });
+      final r = await api.updatePreferences(
+        'u1',
+        macroTags: ['AI'],
+        microTags: ['llm_agents'],
+      );
+      expect(sent.method, 'PUT');
+      expect(sent.url.path, '/api/users/u1/preferences');
+      expect(jsonDecode(sent.body), {
+        'preferred_macro_tags': ['AI'],
+        'preferred_micro_tags': ['llm_agents'],
+      });
+      expect(r.user.onboardingCompleted, isTrue);
+      expect(r.user.interestContext, isNull);
+      expect(r.interestSummary, 'Technical news and updates in Ai.');
+    });
+
+    test(
+      'updatePreferences sends the context sentence, empty clears',
+      () async {
+        final bodies = <Map<String, dynamic>>[];
+        final api = _api((req) async {
+          final body = jsonDecode(req.body) as Map<String, dynamic>;
+          bodies.add(body);
+          return _json({
+            'id': 'u1',
+            'username': 'can',
+            'onboarding_completed': true,
+            'preferred_macro_tags': ['Finance'],
+            'preferred_micro_tags': <String>[],
+            'interest_context': body['interest_context'] == ''
+                ? null
+                : 'Yatırım yapıyorum',
+            'interest_summary': "I'm investing.",
+          });
+        });
+        final r = await api.updatePreferences(
+          'u1',
+          macroTags: ['Finance'],
+          interestContext: 'Yatırım yapıyorum',
+        );
+        expect(bodies.last['interest_context'], 'Yatırım yapıyorum');
+        expect(r.user.interestContext, 'Yatırım yapıyorum');
+
+        final cleared = await api.updatePreferences(
+          'u1',
+          macroTags: ['Finance'],
+          interestContext: '',
+        );
+        expect(bodies.last['interest_context'], '');
+        expect(cleared.user.interestContext, isNull);
+      },
+    );
+
+    test('updatePreferences without a category is rejected locally', () async {
+      final api = _api((_) async => fail('should not be called'));
+      await expectLater(
+        api.updatePreferences('u1', macroTags: const []),
+        throwsA(isA<ApiException>()),
+      );
+    });
+
+    test('getPersonalizedFeed sends user/page, parses score and fallback', () {
+      late http.Request sent;
+      final api = _api((req) async {
+        sent = req;
+        return _json({
+          'user_id': 'u1',
+          'is_fallback': false,
+          'total': 2,
+          'page': 2,
+          'page_size': 2,
+          'articles': [
+            {..._article, 'personal_score': 76, 'is_liked': true},
+            {..._benchmark, 'personal_score': 50, 'is_liked': false},
+          ],
+        });
+      });
+      return api.getPersonalizedFeed('u1', page: 2, pageSize: 2).then((feed) {
+        expect(sent.url.path, '/api/feed/personalized');
+        expect(sent.url.queryParameters, {
+          'user_id': 'u1',
+          'page': '2',
+          'page_size': '2',
+        });
+        expect(feed.isFallback, isFalse);
+        // Test kaydı gizlenir ama sayfa doluydu, devamı olabilir.
+        expect(feed.articles.single.personalScore, 76);
+        expect(feed.articles.single.isLiked, isTrue);
+        expect(feed.hasMore, isTrue);
+      });
+    });
+
+    test('fallback feed is flagged', () async {
+      final api = _api(
+        (_) async => _json({
+          'is_fallback': true,
+          'articles': [
+            {..._article, 'personal_score': 50, 'is_liked': false},
+          ],
+        }),
+      );
+      final feed = await api.getPersonalizedFeed('u1');
+      expect(feed.isFallback, isTrue);
+      expect(feed.hasMore, isFalse);
+    });
+
+    test('setInteraction toggles again if the server state differs', () async {
+      final bodies = <Map<String, dynamic>>[];
+      var serverLiked = true; // Sunucuda zaten beğenilmiş.
+      final api = _api((req) async {
+        bodies.add(jsonDecode(req.body) as Map<String, dynamic>);
+        serverLiked = !serverLiked;
+        return _json({
+          'status': serverLiked ? 'recorded' : 'removed',
+          'active': serverLiked,
+        });
+      });
+      final active = await api.setInteraction(
+        'a1',
+        userId: 'u1',
+        type: InteractionType.like,
+        active: true,
+      );
+      expect(active.active, isTrue);
+      expect(bodies, hasLength(2));
+      expect(bodies.first, {'user_id': 'u1', 'interaction_type': 'like'});
+    });
+
+    test('setInteraction sends once when the toggle matches', () async {
+      var calls = 0;
+      late Uri url;
+      final api = _api((req) async {
+        calls++;
+        url = req.url;
+        return _json({'status': 'recorded', 'active': true});
+      });
+      await api.setInteraction(
+        'a1',
+        userId: 'u1',
+        type: InteractionType.bookmark,
+        active: true,
+      );
+      expect(calls, 1);
+      expect(url.path, '/api/articles/a1/interactions');
+    });
+
+    test('dislike sends its type and returns learned preferences', () async {
+      late Map<String, dynamic> body;
+      final api = _api((req) async {
+        body = jsonDecode(req.body) as Map<String, dynamic>;
+        return _json({
+          'status': 'recorded',
+          'active': true,
+          'interaction_type': 'dislike',
+          'ema_updated': true,
+          'updated_preferred_macro_tags': ['Tech', 'Finance'],
+          'updated_preferred_micro_tags': ['software'],
+        });
+      });
+      final r = await api.toggleInteraction(
+        'a1',
+        userId: 'u1',
+        type: InteractionType.dislike,
+      );
+      expect(body['interaction_type'], 'dislike');
+      expect(r.active, isTrue);
+      expect(r.preferredMacroTags, ['Tech', 'Finance']);
+      expect(r.preferredMicroTags, ['software']);
+    });
+
+    test('removed interaction carries no preference update', () async {
+      final api = _api(
+        (_) async => _json({'status': 'removed', 'active': false}),
+      );
+      final r = await api.toggleInteraction(
+        'a1',
+        userId: 'u1',
+        type: InteractionType.like,
+      );
+      expect(r.active, isFalse);
+      expect(r.preferredMacroTags, isNull);
+      expect(r.preferredMicroTags, isNull);
+    });
+
+    test('follows: list, add (trimmed) and remove', () async {
+      final calls = <String>[];
+      final api = _api((req) async {
+        calls.add('${req.method} ${req.url.path}');
+        if (req.method == 'POST') {
+          expect(jsonDecode(req.body), {'name': 'Revolut', 'macro': 'Finance'});
+          return _json({'id': 'f1', 'name': 'Revolut', 'macro': 'Finance'});
+        }
+        if (req.method == 'DELETE') return _json({'status': 'removed'});
+        return _json([
+          {'id': 'f1', 'name': 'Revolut', 'macro': 'Finance'},
+        ]);
+      });
+      final list = await api.getFollows('u1');
+      expect(list.single.name, 'Revolut');
+      expect(list.single.key, 'revolut');
+      final created = await api.addFollow(
+        'u1',
+        name: '  Revolut ',
+        macro: 'Finance',
+      );
+      expect(created.id, 'f1');
+      await api.removeFollow('u1', 'f1');
+      expect(calls, [
+        'GET /api/users/u1/follows',
+        'POST /api/users/u1/follows',
+        'DELETE /api/users/u1/follows/f1',
+      ]);
+    });
+
+    test('follow limit error is surfaced', () async {
+      final api = _api(
+        (_) async => _json({'detail': 'You can follow up to 3 things.'}, 400),
+      );
+      await expectLater(
+        api.addFollow('u1', name: 'Wise', macro: 'Finance'),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.userMessage,
+            'message',
+            'You can follow up to 3 things.',
+          ),
+        ),
+      );
+    });
+
+    test('feed article carries matched follows', () {
+      final a = Article.fromJson({
+        ..._article,
+        'personal_score': 81,
+        'matched_follows': ['Revolut'],
+      });
+      expect(a.matchedFollows, ['Revolut']);
+    });
+
+    test('openWai sends the scope and parses the opening', () async {
+      late http.Request sent;
+      final api = _api((req) async {
+        sent = req;
+        return _json({
+          'mode': 'story',
+          'title': 'Banks block AI agents',
+          'subtitle': 'Story chat',
+          'opening': 'This story is about banks. Want the key points?',
+          'sources': [
+            {'id': 'a1', 'title': 'Banks block AI agents', 'tldr': 'They do.'},
+          ],
+        });
+      });
+      final o = await api.openWai(userId: 'u1', mode: 'story', articleId: 'a1');
+      expect(sent.method, 'POST');
+      expect(sent.url.path, '/api/wai/open');
+      expect(jsonDecode(sent.body), {
+        'user_id': 'u1',
+        'mode': 'story',
+        'article_id': 'a1',
+      });
+      expect(o.title, 'Banks block AI agents');
+      expect(o.subtitle, 'Story chat');
+      expect(o.opening, startsWith('This story is about banks.'));
+      expect(o.sources.single.id, 'a1');
+    });
+
+    test('getLatestDevelopments parses the card and its stories', () async {
+      late http.Request sent;
+      final api = _api((req) async {
+        sent = req;
+        return _json({
+          'headline': 'Banks curb AI agents as fintech funding triples',
+          'paragraph': 'Schwab and JPMorgan block AI agents.',
+          'articles': [
+            {'id': 'a1', 'title': 'Banks block AI agents', 'tldr': 'They do.'},
+            {'title': 'no id, skipped'},
+          ],
+          'model': 'deepseek-ai/DeepSeek-V4-Flash-0731',
+          'refreshing': true,
+        });
+      });
+      final l = await api.getLatestDevelopments('u1');
+      expect(sent.url.path, '/api/users/u1/latest-developments');
+      expect(l.headline, 'Banks curb AI agents as fintech funding triples');
+      expect(l.paragraph, 'Schwab and JPMorgan block AI agents.');
+      expect(l.articles.single.id, 'a1');
+      expect(l.refreshing, isTrue);
+    });
+
+    test('getDailyDigest parses report and articles', () async {
+      late Uri url;
+      final api = _api((req) async {
+        url = req.url;
+        return _json({
+          'date': '2026-10-17',
+          'macro_tag': 'AI',
+          'cluster_title': 'AI Deep Verification Brief: X',
+          'cluster_id': 'c1',
+          'article_ids': ['a1'],
+          'articles': [
+            {
+              'id': 'a1',
+              'source': 'Wired',
+              'title': 'X',
+              'url': 'https://x',
+              'tldr': 'Y',
+            },
+          ],
+          'tavily_sources': [],
+          'synthesis_report': '**1. Shared Consensus**',
+          'is_cached': true,
+        });
+      });
+      final d = await api.getDailyDigest(userId: 'u1');
+      expect(url.path, '/api/intelligence/daily-digest');
+      expect(url.queryParameters, {'user_id': 'u1'});
+      expect(d.macroTag, 'AI');
+      expect(d.report, '**1. Shared Consensus**');
+      expect(d.articles.single.source, 'Wired');
+      expect(d.isCached, isTrue);
+    });
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   });
 }

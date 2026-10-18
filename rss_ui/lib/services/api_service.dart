@@ -8,7 +8,12 @@ import '../models/api_models.dart';
 /// Intelligence RSS Platform istemcisi.
 ///
 /// Flutter'a bağımlı değildir; `bin/` altındaki betikler `dart run` ile de
+<<<<<<< HEAD
 /// kullanabilir. Adres derleme sırasında verilir:
+=======
+/// kullanabilir. Varsayılan adres bu bilgisayarda çalışan yerel sunucudur;
+/// tünel gibi başka bir adres derleme sırasında verilir:
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 ///
 ///     flutter run -d chrome --dart-define=API_BASE_URL=https://xyz.loca.lt
 class ApiService {
@@ -18,6 +23,10 @@ class ApiService {
     this.logger,
     this.timeout = const Duration(seconds: 30),
     this.slowTimeout = const Duration(seconds: 90),
+<<<<<<< HEAD
+=======
+    this.digestTimeout = const Duration(seconds: 180),
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   }) : baseUrl = baseUrl.endsWith('/')
            ? baseUrl.substring(0, baseUrl.length - 1)
            : baseUrl,
@@ -25,7 +34,12 @@ class ApiService {
 
   static const defaultBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
+<<<<<<< HEAD
     defaultValue: 'https://tame-mails-march.loca.lt',
+=======
+    // "localhost" önce IPv6'yı dener; sunucu yalnızca IPv4'te dinliyor.
+    defaultValue: 'http://127.0.0.1:8000',
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   );
 
   /// Sunucudaki test kayıtları; akışta ve aramada gösterilmez.
@@ -47,6 +61,12 @@ class ApiService {
   /// sunucuda model yüklendiği için ~45 sn sürebiliyor.
   final Duration slowTimeout;
 
+<<<<<<< HEAD
+=======
+  /// Günün özeti: ilk üretimde Tavily doğrulaması + uzun model yanıtı.
+  final Duration digestTimeout;
+
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   Map<String, String> get _headers => const {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -147,6 +167,189 @@ class ApiService {
   }
 
   // ==========================================================================
+<<<<<<< HEAD
+=======
+  // Kişiselleştirme
+  // ==========================================================================
+
+  /// Seçilebilecek kategoriler ve alt etiketleri. Liste sunucunun kodunda
+  /// sabittir; veritabanına gitmediği için hızlı döner.
+  Future<List<TaxonomyCategory>> getTaxonomy() async {
+    final json = await _getJson(_uri('/api/taxonomy'));
+    return _list(json).map(TaxonomyCategory.fromJson).toList();
+  }
+
+  /// Kullanıcının kayıtlı ilgi alanları.
+  Future<AppUser> getPreferences(String userId) async {
+    final json = await _getJson(_uri('/api/users/${_id(userId)}/preferences'));
+    return AppUser.fromJson(_map(json));
+  }
+
+  /// İlgi alanlarını kaydeder ve onboarding'i tamamlar.
+  ///
+  /// Sunucu ilgi vektörünü `interestContext` cümlesinden (gerekirse
+  /// İngilizceye çevirip), cümle yoksa seçimlerden kurduğu standart cümleden
+  /// yeniden üretir; beğenilerden öğrenilen profil sıfırlanır.
+  Future<PreferencesResult> updatePreferences(
+    String userId, {
+    required List<String> macroTags,
+    List<String> microTags = const [],
+    String? interestContext,
+  }) async {
+    if (macroTags.isEmpty) {
+      throw const ApiException(
+        ApiErrorKind.badRequest,
+        'Pick at least one topic',
+      );
+    }
+    final json = _map(
+      await _send(
+        'PUT',
+        _uri('/api/users/${_id(userId)}/preferences'),
+        body: {
+          'preferred_macro_tags': macroTags,
+          'preferred_micro_tags': microTags,
+          // null: sunucudaki cümle kalır; '': silinir.
+          if (interestContext != null) 'interest_context': interestContext,
+        },
+        timeout: slowTimeout,
+      ),
+    );
+    return PreferencesResult(
+      user: AppUser.fromJson(json),
+      interestSummary: json['interest_summary'] as String?,
+    );
+  }
+
+  /// "Neden" cümlesinin sunucunun kabul ettiği en fazla uzunluğu.
+  static const maxContextChars = 200;
+
+  /// Sunucunun kabul ettiği en fazla "+" takip sayısı.
+  static const maxFollows = 3;
+
+  /// Kullanıcının "+" ile takip ettikleri (eklenme sırasıyla).
+  Future<List<UserFollow>> getFollows(String userId) async {
+    final json = await _getJson(_uri('/api/users/${_id(userId)}/follows'));
+    return _list(json).map(UserFollow.fromJson).toList();
+  }
+
+  /// Takip ekler. Sunucu aynı şeyi ilk kez takip edilince hemen bir kez
+  /// çeker (1 Tavily kredisi), sonra 2 günde bir ortak sorguyla günceller.
+  /// Zaten takip ediliyorsa mevcut kaydı döndürür.
+  Future<UserFollow> addFollow(
+    String userId, {
+    required String name,
+    required String macro,
+  }) async {
+    final json = await _postJson(_uri('/api/users/${_id(userId)}/follows'), {
+      'name': name.trim(),
+      'macro': macro,
+    });
+    return UserFollow.fromJson(_map(json));
+  }
+
+  Future<void> removeFollow(String userId, String followId) async {
+    await _send(
+      'DELETE',
+      _uri('/api/users/${_id(userId)}/follows/${_id(followId)}'),
+    );
+  }
+
+  /// Kişiye özel akışın bir sayfası; en uygun haber önce gelir.
+  ///
+  /// Kullanıcı ilgi alanı seçmediyse sunucu tarih sıralı akış döndürür
+  /// ([PersonalizedFeed.isFallback]).
+  Future<PersonalizedFeed> getPersonalizedFeed(
+    String userId, {
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final size = pageSize.clamp(1, 100);
+    final json = _map(
+      await _getJson(
+        _uri('/api/feed/personalized', {
+          'user_id': userId,
+          'page': '${page < 1 ? 1 : page}',
+          'page_size': '$size',
+        }),
+        timeout: slowTimeout,
+      ),
+    );
+    final raw = json['articles'];
+    final items = raw is List
+        ? raw.whereType<Map<String, dynamic>>().toList()
+        : const <Map<String, dynamic>>[];
+    return PersonalizedFeed(
+      articles: _visible(items.map(Article.fromJson)),
+      hasMore: items.length >= size,
+      isFallback: json['is_fallback'] == true,
+    );
+  }
+
+  /// Beğeni / beğenmeme / kaydetme durumunu değiştirir.
+  ///
+  /// Sunucu bu uç noktayı aç/kapa olarak işler. Beğenide kullanıcının ilgi
+  /// vektörü habere doğru kayar ve haberin kategorisi tercihlere eklenir;
+  /// beğenmemede vektör haberden uzaklaşır ve haber akıştan çıkar.
+  Future<InteractionResult> toggleInteraction(
+    String articleId, {
+    required String userId,
+    required InteractionType type,
+  }) async {
+    final json = _map(
+      await _postJson(_uri('/api/articles/${_id(articleId)}/interactions'), {
+        'user_id': userId,
+        'interaction_type': type.name,
+      }),
+    );
+    return InteractionResult.fromJson(json);
+  }
+
+  /// Etkileşimi istenen duruma getirir. Sunucu aç/kapa çalıştığı için yanıt
+  /// istenenden farklıysa bir kez daha gönderir.
+  Future<InteractionResult> setInteraction(
+    String articleId, {
+    required String userId,
+    required InteractionType type,
+    required bool active,
+  }) async {
+    final result = await toggleInteraction(
+      articleId,
+      userId: userId,
+      type: type,
+    );
+    if (result.active == active) return result;
+    return toggleInteraction(articleId, userId: userId, type: type);
+  }
+
+  /// Kullanıcının ilk kategorisi için günün doğrulanmış özeti.
+  ///
+  /// Gün + kategori başına bir kez üretilir (Tavily + yapay zeka, ~1 dk);
+  /// sonraki çağrılar önbellekten hızlı döner.
+  Future<DailyDigest> getDailyDigest({String? userId, String? macro}) async {
+    final json = await _getJson(
+      _uri('/api/intelligence/daily-digest', {
+        if (userId != null) 'user_id': userId,
+        if (macro != null) 'macro': macro,
+      }),
+      timeout: digestTimeout,
+    );
+    return DailyDigest.fromJson(_map(json));
+  }
+
+  /// Ana sayfanın "Latest developments" kartı: başlık, paragraf ve kartın
+  /// yazıldığı haberler. İlk üretim ~2 sn, sonra önbellekten anında döner.
+  /// İlgi alanı seçilmemişse sunucu 409 döndürür.
+  Future<LatestDevelopments> getLatestDevelopments(String userId) async {
+    final json = await _getJson(
+      _uri('/api/users/${_id(userId)}/latest-developments'),
+      timeout: slowTimeout,
+    );
+    return LatestDevelopments.fromJson(_map(json));
+  }
+
+  // ==========================================================================
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   // POST
   // ==========================================================================
 
@@ -223,6 +426,60 @@ class ApiService {
     });
   }
 
+<<<<<<< HEAD
+=======
+  /// WAI sohbetini açar. [mode]: `story` (haberin tam metni), `latest`
+  /// (ana sayfadaki son gelişmeler) ya da `area` (seçilen kategori ya da alt
+  /// konunun son haberleri). WAI kapsamı okuyup ilk mesajı kendisi yazar.
+  Future<WaiOpening> openWai({
+    required String userId,
+    required String mode,
+    String? articleId,
+    String? area,
+  }) async {
+    final json = await _send(
+      'POST',
+      _uri('/api/wai/open'),
+      body: {
+        'user_id': userId,
+        'mode': mode,
+        if (articleId != null) 'article_id': articleId,
+        if (area != null) 'area': area,
+      },
+      timeout: slowTimeout,
+    );
+    return WaiOpening.fromJson(_map(json));
+  }
+
+  /// [openWai] ile açılan sohbette bir soru; yanıt [chatStream] gibi akar.
+  /// [sourceIds]: sohbetin açıldığı haberler (numaralar sabit kalsın diye).
+  Stream<String> waiChatStream({
+    required String userId,
+    required String mode,
+    String? articleId,
+    String? area,
+    List<String> sourceIds = const [],
+    required String question,
+    List<ChatTurn> history = const [],
+  }) {
+    return _postTextStream(_uri('/api/wai/chat'), {
+      'user_id': userId,
+      'mode': mode,
+      if (articleId != null) 'article_id': articleId,
+      if (area != null) 'area': area,
+      'source_ids': sourceIds,
+      'question': question.trim(),
+      // Sunucu son 6 turu kullanıyor (WAI'nin açılış mesajı dahil).
+      'history': [
+        for (final t in history.skip(
+          history.length > 6 ? history.length - 6 : 0,
+        ))
+          t.toJson(),
+      ],
+    });
+  }
+
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
   /// [chatStream]'in tamamlanmış yanıtı.
   Future<String> chatWithArticle(
     String articleId, {
@@ -278,9 +535,18 @@ class ApiService {
     logger?.call('[$method] $uri');
     final http.Response res;
     try {
+<<<<<<< HEAD
       final req = method == 'GET'
           ? _client.get(uri, headers: _headers)
           : _client.post(uri, headers: _headers, body: jsonEncode(body));
+=======
+      final req = switch (method) {
+        'GET' => _client.get(uri, headers: _headers),
+        'PUT' => _client.put(uri, headers: _headers, body: jsonEncode(body)),
+        'DELETE' => _client.delete(uri, headers: _headers),
+        _ => _client.post(uri, headers: _headers, body: jsonEncode(body)),
+      };
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
       res = await req.timeout(timeout ?? this.timeout);
     } on TimeoutException {
       throw ApiException(ApiErrorKind.timeout, 'Request timed out: $uri');

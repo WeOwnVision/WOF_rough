@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+data/raw/*
+data/processed/*
+!data/**/.gitkeep

@@ -1,0 +1,5 @@
+beautifulsoup4==4.15.0
+ddgs==9.16.0
+feedparser==6.0.14
+requests==2.34.2
+trafilatura==2.3.1

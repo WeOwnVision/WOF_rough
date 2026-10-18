@@ -1,0 +1,33 @@
+{
+  "_not": "TASLAK — Emir verisi ('Claude' sorgusu, 82 temiz haber), etiket yok. Otomatik kontroller kaba; asıl değerlendirme elle: kaç ayrı hikâye, kaç gereksiz kopya okundu.",
+  "scenarios": [
+    {
+      "id": "e1_haftanin_gelismeleri",
+      "stage": 3,
+      "why": "Birden çok hikâye, her biri çok kaynakta: kopyaları tekrar tekrar okumadan ayrı gelişmeleri bulmak",
+      "prompt": "Anthropic ve Claude ile ilgili bu hafta ne gibi gelişmeler oldu? Ayrı gelişmeleri madde madde, kısaca yaz.",
+      "checks": {"cite_all": [["dashboard", "Dashboards"], ["kötü", "cruel", "zalim", "taciz"]]}
+    },
+    {
+      "id": "e2_neden",
+      "stage": 3,
+      "why": "Tek hikâyenin nedenini açıklamak; 20+ kopya arasından yeterli kaynağı seçmek",
+      "prompt": "Anthropic kullanıcıların Claude'a kötü davranmasını neden yasakladı?",
+      "checks": {"cite_all": [["Anthropic"]]}
+    },
+    {
+      "id": "e3_zaman_sirasi",
+      "stage": 3,
+      "why": "İki ayrı haberi zaman sırasıyla birleştirmek: program genişletildi, sonra ücretsiz avantajlar durduruldu",
+      "prompt": "Claude'un startup programıyla ilgili ne oldu? Önce ne duyuruldu, sonra ne değişti?",
+      "checks": {"cite_all": [["durdur", "askıya", "paus", "dondur"]]}
+    },
+    {
+      "id": "e4_korpusta_yok",
+      "stage": 3,
+      "why": "Korpusta olmayan model hakkında uydurmamak",
+      "prompt": "Claude Opus 6 ne zaman çıktı, özellikleri neler?",
+      "checks": {"not_found": true}
+    }
+  ]
+}

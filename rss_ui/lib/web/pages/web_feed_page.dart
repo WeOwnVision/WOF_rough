@@ -264,6 +264,10 @@ class _NewsSwipeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+<<<<<<< HEAD
+=======
+    final reasons = AppState.instance.reasonsFor(news);
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     return Container(
       width: _WebFeedPageState._cardWidth,
       height: _WebFeedPageState._cardHeight,
@@ -304,6 +308,7 @@ class _NewsSwipeCard extends StatelessWidget {
                     Positioned(
                       left: 18,
                       top: 18,
+<<<<<<< HEAD
                       child: _GlassPill(
                         children: [
                           Container(
@@ -321,6 +326,33 @@ class _NewsSwipeCard extends StatelessWidget {
                               news.timeAgo,
                             ].where((s) => s.isNotEmpty).join(' · '),
                           ),
+=======
+                      child: Row(
+                        children: [
+                          _GlassPill(
+                            children: [
+                              Container(
+                                width: 7,
+                                height: 7,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.mint,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                [
+                                  news.category,
+                                  news.timeAgo,
+                                ].where((s) => s.isNotEmpty).join(' · '),
+                              ),
+                            ],
+                          ),
+                          if (matchScore(news) case final score?) ...[
+                            const SizedBox(width: 8),
+                            MatchBadge(score, fontSize: 13),
+                          ],
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                         ],
                       ),
                     ),
@@ -349,6 +381,23 @@ class _NewsSwipeCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+<<<<<<< HEAD
+=======
+                      // "Neden bu haber": kişiselleştirmeyi görünür kılar.
+                      if (reasons.isNotEmpty) ...[
+                        Text(
+                          'Because you follow ${reasons.join(' · ')}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            color: AppColors.mint,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                       Text(
                         news.title,
                         maxLines: 3,
@@ -363,7 +412,11 @@ class _NewsSwipeCard extends StatelessWidget {
                       const SizedBox(height: 14),
                       Text(
                         news.summary,
+<<<<<<< HEAD
                         maxLines: 4,
+=======
+                        maxLines: reasons.isEmpty ? 4 : 3,
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.sourceSerif4(
                           color: AppColors.textBody,
@@ -422,7 +475,11 @@ class _NewsSwipeCard extends StatelessWidget {
             ),
           if (dislikeOpacity > 0)
             _Stamp(
+<<<<<<< HEAD
               label: 'SKIP',
+=======
+              label: 'NOPE',
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
               color: AppColors.dislike,
               opacity: dislikeOpacity,
               alignment: Alignment.topRight,
@@ -715,6 +772,11 @@ class _SidePanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+<<<<<<< HEAD
+=======
+        _FeedSourcePanel(state: state),
+        const SizedBox(height: 20),
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
         PanelCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -730,7 +792,11 @@ class _SidePanel extends StatelessWidget {
                   ),
                   _Stat(
                     value: '${state.sessionDislikes}',
+<<<<<<< HEAD
                     label: 'Skipped',
+=======
+                    label: 'Disliked',
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                     color: AppColors.dislike,
                   ),
                   _Stat(
@@ -784,7 +850,11 @@ class _SidePanel extends StatelessWidget {
             children: [
               OverlineLabel('Keyboard shortcuts'),
               SizedBox(height: 14),
+<<<<<<< HEAD
               _Shortcut(keyLabel: '←', label: 'Dislike / skip'),
+=======
+              _Shortcut(keyLabel: '←', label: 'Dislike (hides it)'),
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
               _Shortcut(keyLabel: '→', label: 'Like'),
               _Shortcut(keyLabel: '↑', label: 'Send to WAI'),
               _Shortcut(keyLabel: 'Space', label: 'Story details'),
@@ -796,6 +866,117 @@ class _SidePanel extends StatelessWidget {
   }
 }
 
+<<<<<<< HEAD
+=======
+/// Akışın neye göre sıralandığı: kişisel (ilgi alanları), tarih sıralı
+/// yedek ya da genel akış.
+class _FeedSourcePanel extends StatelessWidget {
+  const _FeedSourcePanel({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final personal = state.feedIsPersonal && !state.feedIsFallback;
+    final String title;
+    final String body;
+    if (personal) {
+      title = 'Personalized for you';
+      body =
+          'Ranked by your topics, categories, the stories you like and '
+          'freshness. Likes add their topics to your Feed; dislikes hide '
+          'a story and steer you away from similar ones.';
+    } else if (state.feedIsPersonal) {
+      title = 'Latest stories';
+      body = 'Pick your interests to get a Feed ranked for you.';
+    } else {
+      title = 'Latest stories';
+      body = state.hasServerUser
+          ? 'Loading your personalized Feed…'
+          : 'Showing everyone the newest stories.';
+    }
+
+    return PanelCard(
+      gradient: personal
+          ? RadialGradient(
+              center: const Alignment(0.9, -0.9),
+              radius: 1.4,
+              colors: [
+                AppColors.mint.withValues(alpha: 0.10),
+                AppColors.surface,
+              ],
+            )
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                personal ? Icons.auto_awesome_rounded : Icons.schedule_rounded,
+                size: 17,
+                color: personal ? AppColors.mint : AppColors.textMuted,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OverlineLabel(
+                  title,
+                  color: personal ? AppColors.mint : AppColors.textMuted,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            body,
+            style: GoogleFonts.inter(
+              color: AppColors.textBody,
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
+          if (state.interests.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final i in state.interests)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: categoryColor(i).withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      i,
+                      style: GoogleFonts.inter(
+                        color: categoryColor(i),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          if (state.hasServerUser) ...[
+            const SizedBox(height: 14),
+            LinkButton(
+              state.interests.isEmpty ? 'Pick interests' : 'Edit interests',
+              onTap: () => state.goTo(AppState.navProfile),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 class _Stat extends StatelessWidget {
   const _Stat({required this.value, required this.label, required this.color});
 

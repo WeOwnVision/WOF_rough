@@ -198,6 +198,57 @@ class CategoryBadge extends StatelessWidget {
   }
 }
 
+<<<<<<< HEAD
+=======
+/// Kişisel akıştaki uygunluk puanı; tarih sıralı (fallback) akışta sunucu
+/// herkese sabit 50 verdiği için gösterilmez.
+int? matchScore(Article a) =>
+    AppState.instance.feedIsFallback ? null : a.personalScore;
+
+/// "76% match" rozeti (görsel üzerinde).
+class MatchBadge extends StatelessWidget {
+  const MatchBadge(this.score, {super.key, this.fontSize = 12});
+
+  final int score;
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message:
+          'How well this story fits your interests: topics, category, '
+          'stories you liked and freshness',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xCC1A1A1F),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.auto_awesome_rounded,
+              size: fontSize + 2,
+              color: AppColors.mint,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              '$score% match',
+              style: GoogleFonts.inter(
+                color: AppColors.textPrimary,
+                fontSize: fontSize,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
 /// Kaydet düğmesi; durumu [AppState]'ten okur.
 class BookmarkButton extends StatelessWidget {
   const BookmarkButton(this.news, {super.key, this.size = 20});
@@ -280,6 +331,11 @@ class NewsGridCard extends StatelessWidget {
                     top: 12,
                     child: CategoryBadge(news.category),
                   ),
+<<<<<<< HEAD
+=======
+                  if (matchScore(news) case final score?)
+                    Positioned(right: 12, top: 12, child: MatchBadge(score)),
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                 ],
               ),
             ),

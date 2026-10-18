@@ -699,10 +699,14 @@ class _OfflineBanner extends StatelessWidget {
             child: Text(
               'Server is offline — showing cached articles. '
               'Live features like search and chat are unavailable.',
+<<<<<<< HEAD
               style: GoogleFonts.inter(
                 color: AppColors.textBody,
                 fontSize: 13,
               ),
+=======
+              style: GoogleFonts.inter(color: AppColors.textBody, fontSize: 13),
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
             ),
           ),
           const SizedBox(width: 12),

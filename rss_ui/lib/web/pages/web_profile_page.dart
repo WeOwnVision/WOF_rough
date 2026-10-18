@@ -5,6 +5,7 @@ import '../../models/api_models.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
+<<<<<<< HEAD
 import '../widgets/web_ui.dart';
 
 /// Profil (solda) ve ayarlar (sağda) sayfası.
@@ -14,6 +15,33 @@ class WebProfilePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppState.instance;
+=======
+import '../widgets/interest_form.dart';
+import '../widgets/web_ui.dart';
+
+/// Profil (solda) ve ayarlar (sağda) sayfası.
+class WebProfilePage extends StatefulWidget {
+  const WebProfilePage({super.key});
+
+  @override
+  State<WebProfilePage> createState() => _WebProfilePageState();
+}
+
+class _WebProfilePageState extends State<WebProfilePage> {
+  final state = AppState.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    // `GET /api/users/{id}/preferences` ve etiket adları için taksonomi.
+    state.refreshPreferences();
+    state.loadFollows();
+    if (state.hasServerUser) state.loadTaxonomy();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     return ListenableBuilder(
       listenable: state,
       builder: (context, _) => SingleChildScrollView(
@@ -305,7 +333,13 @@ class _Settings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+<<<<<<< HEAD
     final interests = state.interests.toList();
+=======
+    final interests = state.interests;
+    final topics = state.interestTags;
+    final canEdit = state.hasServerUser;
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -445,6 +479,7 @@ class _Settings extends StatelessWidget {
               _SettingRow(
                 icon: Icons.interests_outlined,
                 title: 'Interests',
+<<<<<<< HEAD
                 subtitle: 'Shapes Feed and Discover recommendations',
                 onTap: () => _editInterests(context),
                 trailing: const Icon(
@@ -466,6 +501,65 @@ class _Settings extends StatelessWidget {
                           fontSize: 12.5,
                         ),
                       ),
+=======
+                subtitle: canEdit
+                    ? 'Your Feed shows only these categories'
+                    : 'Connect to the server to personalize your Feed',
+                onTap: canEdit ? () => _editInterests(context) : null,
+                trailing: canEdit
+                    ? const Icon(
+                        Icons.chevron_right_rounded,
+                        color: AppColors.textMuted,
+                      )
+                    : const SizedBox.shrink(),
+                below: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final i in interests) _Tag(i),
+                        for (final f in state.follows) _Tag('+ ${f.name}'),
+                        for (final t in topics.take(6))
+                          _Tag(state.tagLabel(t), muted: true),
+                        if (topics.length > 6)
+                          _Tag('+${topics.length - 6}', muted: true),
+                        if (interests.isEmpty)
+                          Text(
+                            'No interests selected yet.',
+                            style: GoogleFonts.inter(
+                              color: AppColors.textMuted,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (state.interestContext != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Your Feed helps you: “${state.interestContext}”',
+                        style: GoogleFonts.sourceSerif4(
+                          color: AppColors.textPrimary,
+                          fontSize: 13.5,
+                          fontStyle: FontStyle.italic,
+                          height: 1.45,
+                        ),
+                      ),
+                    ],
+                    if (state.interestSummary != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'WAI reads this as: “${state.interestSummary}”',
+                        style: GoogleFonts.sourceSerif4(
+                          color: AppColors.textMuted,
+                          fontSize: 13.5,
+                          fontStyle: FontStyle.italic,
+                          height: 1.45,
+                        ),
+                      ),
+                    ],
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
                   ],
                 ),
               ),
@@ -541,18 +635,31 @@ class _Settings extends StatelessWidget {
     );
   }
 
+<<<<<<< HEAD
   Future<void> _editInterests(BuildContext context) {
     final all = {...macroCategories, ...state.interests}.toList();
+=======
+  /// Onboarding'deki seçim formunu pencerede açar; kayıt
+  /// `PUT /api/users/{id}/preferences` ile yapılır.
+  Future<void> _editInterests(BuildContext context) {
+    state.preferencesError = null;
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
     return showDialog<void>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.7),
       builder: (context) => Dialog(
+<<<<<<< HEAD
         backgroundColor: AppColors.surface,
+=======
+        backgroundColor: AppColors.background,
+        insetPadding: const EdgeInsets.all(40),
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
           side: const BorderSide(color: AppColors.border),
         ),
         child: ConstrainedBox(
+<<<<<<< HEAD
           constraints: const BoxConstraints(maxWidth: 520),
           child: Padding(
             padding: const EdgeInsets.all(28),
@@ -602,6 +709,97 @@ class _Settings extends StatelessWidget {
                   ),
                 ],
               ),
+=======
+          constraints: const BoxConstraints(maxWidth: 920, maxHeight: 880),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(32, 28, 32, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Edit interests',
+                        style: GoogleFonts.playfairDisplay(
+                          color: AppColors.textPrimary,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: AppColors.iconMuted,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Sunucu ilgi vektörünü yeni seçimlerden sıfırdan üretiyor.
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.dislike.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: AppColors.dislike.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.info_outline_rounded,
+                        size: 18,
+                        color: AppColors.dislike,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Saving starts your Feed over from these choices. '
+                          'What your likes have taught it so far will be '
+                          'reset.',
+                          style: GoogleFonts.inter(
+                            color: AppColors.textBody,
+                            fontSize: 13.5,
+                            height: 1.45,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                InterestForm(
+                  submitLabel: 'Save',
+                  columns: 3,
+                  initialMacros: state.interests,
+                  initialMicros: state.interestTags,
+                  initialFollows: state.follows,
+                  initialContext: state.interestContext ?? '',
+                  secondaryAction: WebButton(
+                    label: 'Cancel',
+                    primary: false,
+                    onTap: () => Navigator.of(context).pop(),
+                  ),
+                  onSubmit: (macros, micros, follows, why) async {
+                    final ok = await state.saveInterests(
+                      macroTags: macros,
+                      microTags: micros,
+                      follows: follows,
+                      context: why,
+                    );
+                    if (ok && context.mounted) Navigator.of(context).pop();
+                    return ok;
+                  },
+                ),
+              ],
+>>>>>>> ba5d700 (All system base developed for system design at backend server. Also Flutter Frontend developed.)
             ),
           ),
         ),
