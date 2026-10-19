@@ -82,9 +82,10 @@ class UserAvatar extends StatelessWidget {
   }
 }
 
-/// Haber görseli; ekranda kapladığı boyutta çözülür. 1200 px'lik dosyaları
-/// 50 px'lik küçük resimler için bile tam boyutta açmak, kart ilk
-/// göründüğünde takılma yapıyordu.
+/// Haber görseli: [path] sunucunun bulduğu gerçek görselin linki
+/// (`http…`) ya da yerel yer tutucu. Ekranda kapladığı boyutta çözülür;
+/// 1200 px'lik dosyaları 50 px'lik küçük resimler için bile tam boyutta
+/// açmak, kart ilk göründüğünde takılma yapıyordu.
 class NewsImage extends StatelessWidget {
   const NewsImage(this.path, {super.key, this.width, this.height});
 
@@ -104,6 +105,25 @@ class NewsImage extends StatelessWidget {
         // küçük boyut farkı için yeniden çözülmesini önler.
         final needed = math.max(w, h * 4 / 3) * ratio;
         final cacheWidth = ((needed / 100).ceil() * 100).clamp(100, 1200);
+        if (path.startsWith('http://') || path.startsWith('https://')) {
+          return Image.network(
+            path,
+            width: width,
+            height: height,
+            fit: BoxFit.cover,
+            cacheWidth: cacheWidth,
+            gaplessPlayback: true,
+            // Yayıncı CORS başlığı göndermezse tarayıcının <img>'i kullanılır.
+            webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+            errorBuilder: (_, _, _) => Image.asset(
+              'assets/images/headline.jpg',
+              width: width,
+              height: height,
+              fit: BoxFit.cover,
+              cacheWidth: cacheWidth,
+            ),
+          );
+        }
         return Image.asset(
           path,
           width: width,

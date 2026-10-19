@@ -42,7 +42,7 @@ AREA_MIN_STORIES = 4
 HISTORY_TURNS = 6
 NO_THINKING = {"chat_template_kwargs": {"thinking": False, "enable_thinking": False}}
 
-ARTICLE_COLUMNS = "id, source_feed, title, original_url, author, published_at, macro_tag, macro_tags, micro_tags, tldr"
+ARTICLE_COLUMNS = "id, source_feed, title, original_url, author, published_at, macro_tag, macro_tags, micro_tags, tldr, image_url, image_status"
 
 SYSTEM_PROMPT = """You are WAI, the intelligent news assistant of the W.O.F (FeedProof) news app.
 {scope}
@@ -94,6 +94,8 @@ def _article_dicts(rows) -> List[dict]:
     return [jsonable_encoder({
         "id": str(r[0]), "source": r[1], "title": r[2], "url": r[3], "author": r[4], "published_at": r[5],
         "macro_tag": r[6], "macro_tags": r[7] or ([r[6]] if r[6] else []), "micro_tags": r[8] or [], "tldr": r[9],
+        "image_url": r[10] if len(r) > 10 else None,
+        "image_status": r[11] if len(r) > 11 else None,
     }) for r in rows]
 
 

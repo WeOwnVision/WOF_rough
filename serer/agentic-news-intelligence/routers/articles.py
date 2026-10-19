@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Header
 
 from db import get_db
 from schemas import ScrapedArticleIn
-from url_utils import canonicalize_url
+from url_utils import canonicalize_url, extract_domain
 from content_cleaner import clean_article_markdown
 from routers.deps import INGESTION_SECRET, validate_uuid
 from routers.users import get_personalized_feed_data
@@ -32,13 +32,27 @@ def ingest_articles(items: list[ScrapedArticleIn], x_secret: str = Header(...)):
                 pub_date = datetime.now(timezone.utc)
 
             cleaned_content = clean_article_markdown(item.Baslik, item.TamMetin)
+            
+            # Resolve image if present or fallback to domain favicon
+            img_url = item.image_url or item.Resim
+            domain = extract_domain(canonical_link)
+            if img_url:
+                img_status = item.image_status or "resolved"
+            elif domain and domain != "news.web":
+                img_url = f"https://www.google.com/s2/favicons?domain={domain}&sz=128"
+                img_status = "favicon"
+            else:
+                img_url = None
+                img_status = "gradient_fallback"
 
             cur.execute("""
-                INSERT INTO articles (url_hash, source_feed, title, original_url, author, published_at, clean_text)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (url_hash) DO NOTHING
+                INSERT INTO articles (url_hash, source_feed, title, original_url, author, published_at, clean_text, image_url, image_status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (url_hash) DO UPDATE SET
+                    image_url = COALESCE(EXCLUDED.image_url, articles.image_url),
+                    image_status = COALESCE(EXCLUDED.image_status, articles.image_status)
                 RETURNING id;
-            """, (url_hash, item.Site, item.Baslik, canonical_link, item.Yazar, pub_date, cleaned_content))
+            """, (url_hash, item.Site, item.Baslik, canonical_link, item.Yazar, pub_date, cleaned_content, img_url, img_status))
             if cur.fetchone():
                 inserted += 1
 
@@ -62,7 +76,7 @@ def get_articles(
         if macro:
             macro_clean = macro.strip()
             cur.execute("""
-                SELECT id, source_feed, title, original_url, author, published_at, macro_tag, macro_tags, micro_tags, tldr
+                SELECT id, source_feed, title, original_url, author, published_at, macro_tag, macro_tags, micro_tags, tldr, image_url, image_status
                 FROM articles WHERE is_processed = TRUE 
                   AND (macro_tag ILIKE %s OR EXISTS (
                       SELECT 1 FROM unnest(macro_tags) m WHERE m ILIKE %s
@@ -71,7 +85,7 @@ def get_articles(
             """, (macro_clean, macro_clean, page_size, offset))
         else:
             cur.execute("""
-                SELECT id, source_feed, title, original_url, author, published_at, macro_tag, macro_tags, micro_tags, tldr
+                SELECT id, source_feed, title, original_url, author, published_at, macro_tag, macro_tags, micro_tags, tldr, image_url, image_status
                 FROM articles 
                 WHERE is_processed = TRUE 
                   AND macro_tag IS NOT NULL 
@@ -85,7 +99,9 @@ def get_articles(
             "id": str(r[0]), "source": r[1], "title": r[2], "url": r[3],
             "author": r[4], "published_at": r[5], "macro_tag": r[6],
             "macro_tags": r[7] if r[7] else ([r[6]] if r[6] else []),
-            "micro_tags": r[8], "tldr": r[9]
+            "micro_tags": r[8], "tldr": r[9],
+            "image_url": r[10],
+            "image_status": r[11] or ("resolved" if r[10] else "gradient_fallback")
         }
         for r in rows
     ]
@@ -96,7 +112,7 @@ def get_article(article_id: str):
     valid_id = validate_uuid(article_id, "article_id")
     with get_db() as cur:
         cur.execute("""
-            SELECT id, source_feed, title, original_url, author, published_at, clean_text, macro_tag, macro_tags, micro_tags, tldr
+            SELECT id, source_feed, title, original_url, author, published_at, clean_text, macro_tag, macro_tags, micro_tags, tldr, image_url, image_status
             FROM articles WHERE id = %s;
         """, (valid_id,))
         row = cur.fetchone()
@@ -107,5 +123,7 @@ def get_article(article_id: str):
             "author": row[4], "published_at": row[5], "clean_text": row[6],
             "macro_tag": row[7],
             "macro_tags": row[8] if row[8] else ([row[7]] if row[7] else []),
-            "micro_tags": row[9], "tldr": row[10]
+            "micro_tags": row[9], "tldr": row[10],
+            "image_url": row[11],
+            "image_status": row[12] or ("resolved" if row[11] else "gradient_fallback")
         }

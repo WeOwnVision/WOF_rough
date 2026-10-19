@@ -9,6 +9,9 @@ class ScrapedArticleIn(BaseModel):
     Yazar: Optional[str] = None
     Tarih: Optional[str] = None
     TamMetin: str
+    Resim: Optional[str] = None
+    image_url: Optional[str] = None
+    image_status: Optional[str] = None
 
 class ArticleEnrichmentOut(BaseModel):
     macro_tag: str = Field(..., description="One of: Tech, AI, Hardware, Automotive, Gaming, Finance, Science")

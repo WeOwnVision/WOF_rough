@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -36,6 +37,7 @@ class _ArticleDialogState extends State<_ArticleDialog> {
   final _state = AppState.instance;
   final _commentCtrl = TextEditingController();
   final _scroll = SmoothScrollController();
+  final _askCtrl = TextEditingController();
 
   late Future<Article> _detail;
   late Future<List<ArticleComment>> _comments;
@@ -43,9 +45,17 @@ class _ArticleDialogState extends State<_ArticleDialog> {
   String _selection = '';
   bool _posting = false;
 
+  bool _inspecting = false;
+  String? _inspectProgress;
+  FactCheckResult? _factCheck;
+  String? _inspectError;
+  bool _asking = false;
+  final List<Map<String, String>> _qaHistory = [];
+
   @override
   void initState() {
     super.initState();
+    _factCheck = widget.article.factCheckCache;
     _loadDetail();
     _loadComments();
   }
@@ -54,10 +64,18 @@ class _ArticleDialogState extends State<_ArticleDialog> {
   void dispose() {
     _commentCtrl.dispose();
     _scroll.dispose();
+    _askCtrl.dispose();
     super.dispose();
   }
 
-  void _loadDetail() => _detail = _state.loadDetail(widget.article.id);
+  void _loadDetail() {
+    _detail = _state.loadDetail(widget.article.id).then((art) {
+      if (mounted && art.factCheckCache != null && _factCheck == null) {
+        setState(() => _factCheck = art.factCheckCache);
+      }
+      return art;
+    });
+  }
 
   void _loadComments() {
     _posted.clear();
@@ -95,6 +113,82 @@ class _ArticleDialogState extends State<_ArticleDialog> {
       }
     } finally {
       if (mounted) setState(() => _posting = false);
+    }
+  }
+
+  Future<void> _startDeepInspect() async {
+    if (_inspecting) return;
+    setState(() {
+      _inspecting = true;
+      _inspectError = null;
+      _inspectProgress = 'Initializing Deep Inspect...';
+    });
+
+    try {
+      await for (final event in _state.api.deepInspectStream(
+        widget.article.id,
+      )) {
+        if (!mounted) return;
+        if (event.event == 'status') {
+          setState(() => _inspectProgress = event.data);
+        } else if (event.event == 'final') {
+          final json = jsonDecode(event.data);
+          if (json is Map<String, dynamic>) {
+            setState(() {
+              _factCheck = FactCheckResult.fromJson(json);
+              _inspecting = false;
+              _inspectProgress = null;
+            });
+          }
+        } else if (event.event == 'error') {
+          String errMsg = event.data;
+          try {
+            final errJson = jsonDecode(event.data);
+            if (errJson is Map && errJson['message'] != null) {
+              errMsg = errJson['message'].toString();
+            }
+          } catch (_) {}
+          setState(() {
+            _inspectError = errMsg;
+            _inspecting = false;
+            _inspectProgress = null;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _inspectError = e.toString();
+          _inspecting = false;
+          _inspectProgress = null;
+        });
+      }
+    }
+  }
+
+  Future<void> _askArticleQuestion() async {
+    final q = _askCtrl.text.trim();
+    if (q.isEmpty || _asking) return;
+    setState(() => _asking = true);
+    try {
+      final answer = await _state.api.askArticle(
+        widget.article.id,
+        question: q,
+        history: _qaHistory,
+      );
+      _askCtrl.clear();
+      setState(() {
+        _qaHistory.add({'role': 'user', 'content': q});
+        _qaHistory.add({'role': 'assistant', 'content': answer});
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to answer: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _asking = false);
     }
   }
 
@@ -161,6 +255,12 @@ class _ArticleDialogState extends State<_ArticleDialog> {
                               _body(detail),
                             const SizedBox(height: 26),
                             _actions(detail ?? a),
+                            if (_inspecting ||
+                                _factCheck != null ||
+                                _inspectError != null) ...[
+                              const SizedBox(height: 24),
+                              _deepInspectCard(detail ?? a),
+                            ],
                             const SizedBox(height: 32),
                             const Divider(color: AppColors.border),
                             const SizedBox(height: 20),
@@ -307,6 +407,18 @@ class _ArticleDialogState extends State<_ArticleDialog> {
         runSpacing: 12,
         children: [
           WebButton(
+            label: _factCheck != null
+                ? 'Grounded Fact-Check'
+                : (_inspecting ? 'Inspecting...' : 'Deep Inspect'),
+            icon: Icons.verified_user_rounded,
+            primary: _factCheck != null,
+            onTap: () {
+              if (!_inspecting && _factCheck == null) {
+                _startDeepInspect();
+              }
+            },
+          ),
+          WebButton(
             label: 'Ask WAI',
             icon: Icons.forum_outlined,
             onTap: () {
@@ -338,6 +450,500 @@ class _ArticleDialogState extends State<_ArticleDialog> {
               primary: false,
               onTap: () => _openOriginal(a.url),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _deepInspectCard(Article a) {
+    if (_inspecting) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: AppColors.accent,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    _inspectProgress ?? 'Running deep inspection...',
+                    style: GoogleFonts.inter(
+                      color: AppColors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Tavily Web Agent + Nemotron-3-Ultra cross-referencing sources...',
+              style: GoogleFonts.inter(
+                color: AppColors.textMuted,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_inspectError != null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.dislike.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.info_outline_rounded,
+              color: AppColors.dislike,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _inspectError!,
+                style: GoogleFonts.inter(
+                  color: AppColors.textPrimary,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              onPressed: _startDeepInspect,
+              tooltip: 'Retry',
+            ),
+          ],
+        ),
+      );
+    }
+
+    final fc = _factCheck;
+    if (fc == null) return const SizedBox.shrink();
+
+    final isVerified =
+        fc.factCheckVerdict.toLowerCase().contains('verified') &&
+        !fc.factCheckVerdict.toLowerCase().contains('unverified');
+    final isPartially = fc.factCheckVerdict.toLowerCase().contains('partially');
+    // Doğrulanamayan haber "yanlış" değildir; kırmızı yerine gri.
+    final verdictColor = isVerified
+        ? AppColors.supported
+        : (isPartially ? AppColors.contested : AppColors.unverified);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: verdictColor.withValues(alpha: 0.4),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: verdictColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: verdictColor.withValues(alpha: 0.5),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isVerified
+                          ? Icons.check_circle_rounded
+                          : (isPartially
+                                ? Icons.warning_rounded
+                                : Icons.help_outline_rounded),
+                      size: 16,
+                      color: verdictColor,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      fc.factCheckVerdict,
+                      style: GoogleFonts.inter(
+                        color: verdictColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              if (fc.isCached)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '0 Credits · Cached Receipt',
+                    style: GoogleFonts.inter(
+                      color: AppColors.mint,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          if (fc.modelUsed.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Evaluated by ${fc.modelUsed}',
+              style: GoogleFonts.inter(
+                color: AppColors.textMuted,
+                fontSize: 11.5,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          Text(
+            'Executive Fact-Check Synthesis',
+            style: GoogleFonts.inter(
+              color: AppColors.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            fc.executiveSynthesis,
+            style: GoogleFonts.sourceSerif4(
+              color: AppColors.textBody,
+              fontSize: 15.5,
+              height: 1.6,
+            ),
+          ),
+          if (fc.biasAndNuance.isNotEmpty &&
+              fc.biasAndNuance != 'No framing bias detected.') ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.quoteBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.balance_rounded,
+                    size: 16,
+                    color: AppColors.accentLight,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      fc.biasAndNuance,
+                      style: GoogleFonts.inter(
+                        color: AppColors.textBody,
+                        fontSize: 12.5,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (fc.claimMatrix.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Text(
+              'Grounded Claims Matrix',
+              style: GoogleFonts.inter(
+                color: AppColors.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 10),
+            for (final claim in fc.claimMatrix)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: claim.status.toLowerCase() == 'supported'
+                                ? AppColors.supported.withValues(alpha: 0.2)
+                                : (claim.status.toLowerCase() == 'contested'
+                                      ? AppColors.contested.withValues(
+                                          alpha: 0.2,
+                                        )
+                                      : AppColors.border),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            claim.status.toUpperCase(),
+                            style: GoogleFonts.inter(
+                              color: claim.status.toLowerCase() == 'supported'
+                                  ? AppColors.supported
+                                  : (claim.status.toLowerCase() == 'contested'
+                                        ? AppColors.contested
+                                        : AppColors.unverified),
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            claim.claim,
+                            style: GoogleFonts.inter(
+                              color: AppColors.textPrimary,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      claim.evidenceSummary,
+                      style: GoogleFonts.inter(
+                        color: AppColors.textBody,
+                        fontSize: 12.5,
+                        height: 1.4,
+                      ),
+                    ),
+                    if (claim.sourceUrl != null &&
+                        claim.sourceUrl!.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      InkWell(
+                        onTap: () => _openOriginal(claim.sourceUrl!),
+                        borderRadius: BorderRadius.circular(6),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.link_rounded,
+                                size: 14,
+                                color: AppColors.accent,
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  claim.sourceUrl!,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    color: AppColors.accent,
+                                    fontSize: 11.5,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+          ],
+          if (fc.sourcesConsulted.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              'Tavily Verified Sources',
+              style: GoogleFonts.inter(
+                color: AppColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final src in fc.sourcesConsulted)
+                  if ((src['url'] ?? '').isNotEmpty)
+                    ActionChip(
+                      avatar: const Icon(
+                        Icons.travel_explore_rounded,
+                        size: 14,
+                        color: AppColors.accentLight,
+                      ),
+                      label: Text(
+                        (src['title'] ?? '').isNotEmpty
+                            ? src['title']!
+                            : (Uri.tryParse(src['url']!)?.host ?? src['url']!),
+                        style: GoogleFonts.inter(
+                          fontSize: 11.5,
+                          color: AppColors.textPrimary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      backgroundColor: AppColors.surface,
+                      side: const BorderSide(color: AppColors.border),
+                      onPressed: () => _openOriginal(src['url']!),
+                    ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 20),
+          const Divider(color: AppColors.border),
+          const SizedBox(height: 14),
+          Text(
+            'Ask Grounded Nemotron-3-Ultra',
+            style: GoogleFonts.inter(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_qaHistory.isNotEmpty) ...[
+            for (final msg in _qaHistory)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: msg['role'] == 'user'
+                        ? AppColors.surface
+                        : AppColors.quoteBg,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        msg['role'] == 'user'
+                            ? Icons.person_outline_rounded
+                            : Icons.auto_awesome_rounded,
+                        size: 14,
+                        color: msg['role'] == 'user'
+                            ? AppColors.textMuted
+                            : AppColors.accent,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          msg['content'] ?? '',
+                          style: GoogleFonts.inter(
+                            color: AppColors.textPrimary,
+                            fontSize: 12.5,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _askCtrl,
+                  style: GoogleFonts.inter(
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                  ),
+                  decoration: InputDecoration(
+                    hintText:
+                        'Ask a question grounded in this verified report...',
+                    hintStyle: GoogleFonts.inter(
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                    ),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    filled: true,
+                    fillColor: AppColors.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: AppColors.accent),
+                    ),
+                  ),
+                  onSubmitted: (_) => _askArticleQuestion(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              WebButton(
+                label: _asking ? 'Thinking...' : 'Ask',
+                icon: Icons.send_rounded,
+                primary: true,
+                onTap: () {
+                  if (!_asking) {
+                    _askArticleQuestion();
+                  }
+                },
+              ),
+            ],
+          ),
         ],
       ),
     );

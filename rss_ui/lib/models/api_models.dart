@@ -28,6 +28,9 @@ class Article {
     this.personalScore,
     this.isLiked,
     this.matchedFollows = const [],
+    this.imageUrl,
+    this.imageStatus,
+    this.factCheckCache,
   });
 
   factory Article.fromJson(Map<String, dynamic> json) {
@@ -35,9 +38,9 @@ class Article {
     final macroTags = _stringList(json['macro_tags']);
     return Article(
       id: json['id'] as String,
-      source: (json['source'] as String?) ?? '',
+      source: (json['source'] as String?) ?? (json['source_feed'] as String?) ?? '',
       title: (json['title'] as String?) ?? '',
-      url: (json['url'] as String?) ?? '',
+      url: (json['url'] as String?) ?? (json['link'] as String?) ?? '',
       author: json['author'] as String?,
       publishedAt: _date(json['published_at']),
       macroTag: macroTag,
@@ -48,6 +51,13 @@ class Article {
       personalScore: (json['personal_score'] as num?)?.toInt(),
       isLiked: json['is_liked'] as bool?,
       matchedFollows: _stringList(json['matched_follows']),
+      imageUrl: json['image_url'] as String?,
+      imageStatus: json['image_status'] as String?,
+      factCheckCache: json['fact_check_cache'] is Map<String, dynamic>
+          ? FactCheckResult.fromJson(json['fact_check_cache'] as Map<String, dynamic>)
+          : (json['fact_check_cache'] is Map
+              ? FactCheckResult.fromJson(Map<String, dynamic>.from(json['fact_check_cache'] as Map))
+              : null),
     );
   }
 
@@ -58,8 +68,7 @@ class Article {
   final String? author;
   final DateTime? publishedAt;
 
-  /// Birincil kategori (Tech, AI, Hardware, Automotive, Gaming, Finance,
-  /// Science). İşlenmemiş haberlerde boş olabilir.
+  /// Birincil kategori (Tech, AI & Compute, Systems & Cloud, etc.).
   final String? macroTag;
   final List<String> macroTags;
   final List<String> microTags;
@@ -68,16 +77,21 @@ class Article {
   /// Haberin tam metni; yalnızca `getArticle` yanıtında gelir.
   final String? cleanText;
 
-  /// Kişisel akıştaki uygunluk puanı (0-100); yalnızca
-  /// `/api/feed/personalized` yanıtında gelir.
+  /// Kişisel akıştaki uygunluk puanı (0-100).
   final int? personalScore;
 
-  /// Kullanıcı bu haberi sunucuda beğenmiş mi; yalnızca kişisel akışta gelir.
+  /// Kullanıcı bu haberi sunucuda beğenmiş mi.
   final bool? isLiked;
 
-  /// Haberde adı geçen, kullanıcının "+" ile takip ettiği şeyler (ör.
-  /// "Revolut"); yalnızca kişisel akışta gelir.
+  /// Haberde adı geçen, kullanıcının "+" ile takip ettiği şeyler.
   final List<String> matchedFollows;
+
+  /// 4-Aşamalı görsel çözücüden gelen görsel linki ve durumu.
+  final String? imageUrl;
+  final String? imageStatus;
+
+  /// Tavily & Nemotron derin doğrulama / olgu kontrolü önbelleği.
+  final FactCheckResult? factCheckCache;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -94,7 +108,79 @@ class Article {
     if (personalScore != null) 'personal_score': personalScore,
     if (isLiked != null) 'is_liked': isLiked,
     if (matchedFollows.isNotEmpty) 'matched_follows': matchedFollows,
+    if (imageUrl != null) 'image_url': imageUrl,
+    if (imageStatus != null) 'image_status': imageStatus,
   };
+}
+
+class ClaimItem {
+  const ClaimItem({
+    required this.claim,
+    required this.status,
+    required this.evidenceSummary,
+    this.sourceUrl,
+  });
+
+  factory ClaimItem.fromJson(Map<String, dynamic> json) {
+    return ClaimItem(
+      claim: (json['claim'] as String?) ?? '',
+      status: (json['status'] as String?) ?? 'unverified',
+      evidenceSummary: (json['evidence_summary'] as String?) ?? '',
+      sourceUrl: json['source_url'] as String?,
+    );
+  }
+
+  final String claim;
+  final String status;
+  final String evidenceSummary;
+  final String? sourceUrl;
+}
+
+class FactCheckResult {
+  const FactCheckResult({
+    required this.executiveSynthesis,
+    required this.factCheckVerdict,
+    this.claimMatrix = const [],
+    this.biasAndNuance = '',
+    this.isCached = false,
+    this.limitedSource = false,
+    this.modelUsed = '',
+    this.sourcesConsulted = const [],
+  });
+
+  factory FactCheckResult.fromJson(Map<String, dynamic> json) {
+    final claims = json['claim_matrix'];
+    final sources = json['sources_consulted'];
+    return FactCheckResult(
+      executiveSynthesis: (json['executive_synthesis'] as String?) ?? '',
+      factCheckVerdict: (json['fact_check_verdict'] as String?) ?? 'Unverified',
+      claimMatrix: claims is List
+          ? claims.whereType<Map<String, dynamic>>().map(ClaimItem.fromJson).toList()
+          : const [],
+      biasAndNuance: (json['bias_and_nuance'] as String?) ?? '',
+      isCached: json['is_cached'] == true,
+      limitedSource: json['limited_source'] == true,
+      modelUsed: (json['model_used'] as String?) ?? '',
+      sourcesConsulted: sources is List
+          ? sources.whereType<Map<String, dynamic>>().map((s) => Map<String, String>.from(s.map((k, v) => MapEntry(k.toString(), v?.toString() ?? '')))).toList()
+          : const [],
+    );
+  }
+
+  final String executiveSynthesis;
+  final String factCheckVerdict;
+  final List<ClaimItem> claimMatrix;
+  final String biasAndNuance;
+  final bool isCached;
+  final bool limitedSource;
+  final String modelUsed;
+  final List<Map<String, String>> sourcesConsulted;
+}
+
+class DeepInspectEvent {
+  const DeepInspectEvent({required this.event, required this.data});
+  final String event;
+  final String data;
 }
 
 /// Arama sonucu: haber + sunucunun eşleşme bilgileri.
