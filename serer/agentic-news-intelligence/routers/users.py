@@ -664,12 +664,11 @@ def _process_site_follow(site_id: str, canonical_url: str, site_name: str) -> No
       3. Saves discovered URLs to site_discovered_urls.
       4. If discovered < 3: sets status = 'no_articles'.
       5. Else: sets status = 'crawling', runs tavily_crawl(url=canonical_url, limit=5, purpose="site_follow_crawl", detail=canonical_url).
-         Cleans each article with clean_article_markdown, embeds, inserts into articles.
+         Sends each post through the normal ingest path (worker labels, summarizes, embeds).
          Sets status = 'ready', updates article_count.
     """
     from tavily_service import tavily_map, tavily_crawl
-    from content_cleaner import clean_article_markdown
-    from embedder import get_embedder
+    from site_watcher import NOISE_PATTERNS, SITE_MAP_DEPTH, SITE_MAP_LIMIT, is_post_url
     import query_scheduler
 
     logger.info("[Site Follow] Starting crawl/map for site %s (%s)", site_name, canonical_url)
@@ -691,10 +690,13 @@ def _process_site_follow(site_id: str, canonical_url: str, site_name: str) -> No
         with get_db() as cur:
             cur.execute("UPDATE watched_sites SET status = 'mapping' WHERE id = %s;", (site_id,))
 
+        # Same cheap map as the daily check (site_watcher): links on the
+        # site's own page, no instructions (~3 credits instead of ~10).
         map_resp = tavily_map(
             url=canonical_url,
-            instructions="news articles, blog posts and press releases only",
-            limit=50,
+            exclude_paths=NOISE_PATTERNS,
+            max_depth=SITE_MAP_DEPTH,
+            limit=SITE_MAP_LIMIT,
             purpose="site_follow_map",
             detail=canonical_url
         )
@@ -703,7 +705,7 @@ def _process_site_follow(site_id: str, canonical_url: str, site_name: str) -> No
         clean_urls: List[str] = []
         for u in found_urls:
             c = canonicalize_url(u)
-            if c and c not in clean_urls:
+            if c and is_post_url(c, canonical_url) and c not in clean_urls:
                 clean_urls.append(c)
 
         logger.info("[Site Follow: %s] Discovered %d URLs via Tavily Map", site_name, len(clean_urls))
@@ -737,60 +739,39 @@ def _process_site_follow(site_id: str, canonical_url: str, site_name: str) -> No
         crawled_results = crawl_resp.get("results", [])
         logger.info("[Site Follow: %s] Crawled %d results via Tavily Crawl", site_name, len(crawled_results))
 
-        embedder = None
-        try:
-            embedder = get_embedder()
-        except Exception as e:
-            logger.warning("[Site Follow] Could not initialize embedder: %s", e)
+        # Posts go through the normal ingest path (like run_site_watch_cycle):
+        # the worker labels, summarizes and embeds them, and the date comes
+        # from the post itself instead of NOW().
+        from site_watcher import _infer_article_date, guess_title
+        from routers.articles import ingest_articles
+        from routers.deps import INGESTION_SECRET
+        from schemas import ScrapedArticleIn
+
+        payload: List[ScrapedArticleIn] = []
+        ingested_urls: List[str] = []
+        for r in crawled_results:
+            raw_url = r.get("url", "")
+            c_url = canonicalize_url(raw_url)
+            raw_content = r.get("raw_content", "") or ""
+            if not c_url or len(raw_content) < 200 or not is_post_url(c_url, canonical_url):
+                continue
+            title = (r.get("title") or guess_title(c_url, raw_content)).strip()
+            payload.append(ScrapedArticleIn(
+                Site=extract_domain(c_url),
+                Baslik=title,
+                Link=c_url,
+                Yazar=site_name,
+                Tarih=_infer_article_date(c_url, raw_content),
+                TamMetin=raw_content,
+            ))
+            ingested_urls.append(c_url)
 
         ingested_count = 0
+        if payload:
+            ingested_count = ingest_articles(payload, x_secret=INGESTION_SECRET).get("inserted", 0)
+
         with get_db() as cur:
-            for r in crawled_results:
-                raw_url = r.get("url", "")
-                c_url = canonicalize_url(raw_url)
-                if not c_url:
-                    continue
-                title = (r.get("title") or f"Update from {site_name}").strip()
-                raw_content = r.get("raw_content", "") or ""
-                cleaned = clean_article_markdown(title, raw_content)
-                if not cleaned or len(cleaned) < 150:
-                    cleaned = raw_content[:2000].strip() if len(raw_content) >= 150 else ""
-                if not cleaned:
-                    continue
-
-                url_hash = hashlib.sha256(c_url.encode("utf-8")).hexdigest()
-                tldr = cleaned[:240].replace("\n", " ").strip()
-                if len(tldr) == 240:
-                    tldr += "..."
-
-                emb_vec_str = None
-                if embedder:
-                    try:
-                        emb = embedder.embed_text(f"{title} - {cleaned[:300]}")
-                        emb_vec_str = str(emb)
-                    except Exception as e:
-                        logger.warning("[Site Follow] Embedding failed for %s: %s", title[:30], e)
-
-                cur.execute("""
-                    INSERT INTO articles (
-                        url_hash, source_feed, title, original_url, author,
-                        published_at, clean_text, macro_tag, macro_tags, micro_tags,
-                        tldr, is_processed, embedding
-                    ) VALUES (
-                        %s, %s, %s, %s, %s,
-                        NOW(), %s, 'Tech', ARRAY['Tech'], ARRAY['newsroom'],
-                        %s, TRUE, %s::vector
-                    )
-                    ON CONFLICT (url_hash) DO UPDATE SET
-                        clean_text = EXCLUDED.clean_text,
-                        is_processed = TRUE
-                    RETURNING id;
-                """, (
-                    url_hash, site_name, title, c_url, site_name,
-                    cleaned, tldr, emb_vec_str
-                ))
-                if cur.fetchone():
-                    ingested_count += 1
+            for c_url in ingested_urls:
                 cur.execute("""
                     INSERT INTO site_discovered_urls (site_id, url_canonical, is_ingested)
                     VALUES (%s, %s, TRUE)
@@ -799,11 +780,11 @@ def _process_site_follow(site_id: str, canonical_url: str, site_name: str) -> No
 
             cur.execute("""
                 UPDATE watched_sites
-                SET status = 'ready',
+                SET status = %s,
                     article_count = (SELECT COUNT(*) FROM site_discovered_urls WHERE site_id = %s AND is_ingested = TRUE),
                     last_checked_at = NOW()
                 WHERE id = %s;
-            """, (site_id, site_id))
+            """, ("ready" if ingested_urls else "no_articles", site_id, site_id))
         logger.info("[Site Follow: %s] Successfully processed; %d articles ingested, status set to ready.", site_name, ingested_count)
 
     except Exception as e:
@@ -858,10 +839,8 @@ def follow_site(user_id: str, req: SiteFollowRequest, background_tasks: Backgrou
     if not domain or domain == "news.web" or "." not in domain:
         raise HTTPException(status_code=400, detail="Invalid site URL or domain")
 
-    # Generate readable name from domain (e.g. openai.com -> OpenAI, deepmind.google -> DeepMind)
-    site_name = domain.split(".")[0].capitalize()
-    if len(site_name) <= 3:
-        site_name = domain.upper()
+    # The feed shows "Because you follow <name>", so the domain reads best.
+    site_name = domain[4:] if domain.startswith("www.") else domain
 
     with get_db() as cur:
         # Enforce max 5 sites

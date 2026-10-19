@@ -60,6 +60,38 @@ NOISE_PATTERNS = [
 ]
 
 
+# Map cost: 1 credit per 10 pages, 2 with `instructions`. Links on the site's
+# own page (depth 1) are its newest posts, so 30 of them without instructions
+# keep a check at ~3 credits.
+SITE_MAP_LIMIT = 30
+SITE_MAP_DEPTH = 1
+
+
+def is_post_url(url: str, root_url: str) -> bool:
+    """A post page: not noise, not the followed listing page itself, and a
+    slug-like last segment ("claude-opus-5-5", "2026-usage-policy-update",
+    "12345"). Section pages such as /research or /company have neither a
+    hyphen nor a digit."""
+    if not is_valid_news_url(url) or canonicalize_url(url) == canonicalize_url(root_url):
+        return False
+    last = re.sub(r"^https?://[^/]+", "", canonicalize_url(url)).strip("/").split("/")[-1]
+    return "-" in last or any(c.isdigit() for c in last)
+
+
+def guess_title(url: str, raw_text: str) -> str:
+    """Crawl and Extract results often carry no title: use the page's first
+    heading, else its address ("claude-opus-5-5" -> "Claude Opus 5.5")."""
+    for line in (raw_text or "").splitlines()[:40]:
+        m = re.match(r"^#{1,2}\s+(.+?)\s*#*$", line.strip())
+        if m and len(m.group(1)) >= 8:
+            return re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", m.group(1)).strip()
+    slug = re.sub(r"^https?://[^/]+", "", url).strip("/").split("/")[-1]
+    slug = re.sub(r"\.\w+$", "", slug)
+    slug = re.sub(r"(\d)-(?=\d)", r"\1.", slug)
+    words = [w for w in re.split(r"[-_]+", slug) if w]
+    return " ".join(w if any(c.isdigit() for c in w) else w.capitalize() for w in words) or url
+
+
 def is_valid_news_url(url: str) -> bool:
     """Filters out pagination, author profiles, and asset links."""
     for pattern in NOISE_PATTERNS:
@@ -111,11 +143,16 @@ def seed_watched_sites():
     pass
 
 
-def get_active_sites() -> List[Dict[str, Any]]:
+def get_active_sites(due_only: bool = False) -> List[Dict[str, Any]]:
     """
     Fetches active sites to monitor that are followed by at least one user.
-    Never returns hardcoded seeds.
+    Never returns hardcoded seeds. due_only: only sites not mapped in the last
+    20 hours, so a restart or an hourly check never maps a site twice a day.
     """
+    due_sql = (
+        " AND (ws.last_mapped_at IS NULL OR ws.last_mapped_at < NOW() - INTERVAL '20 hours')"
+        if due_only else ""
+    )
     try:
         from db import pool
         with pool.connection(timeout=0.3) as conn:
@@ -124,8 +161,7 @@ def get_active_sites() -> List[Dict[str, Any]]:
                     SELECT DISTINCT ws.id, ws.site_name, ws.root_url, ws.select_paths
                     FROM watched_sites ws
                     JOIN user_watched_sites uws ON ws.id = uws.site_id
-                    WHERE ws.is_active = TRUE;
-                """)
+                    WHERE ws.is_active = TRUE""" + due_sql + ";")
                 rows = cur.fetchall()
                 if rows:
                     return [
@@ -163,9 +199,9 @@ def run_site_watch_cycle(max_extract_per_site: int = 3) -> tuple[int, int]:
         logger.warning("[Site Watcher] Credit check note: %s", e)
 
     secret = os.getenv("INGESTION_SECRET")
-    sites = get_active_sites()
+    sites = get_active_sites(due_only=True)
     if not sites:
-        logger.info("[Site Watcher] No user-followed sites to watch. Waiting...")
+        logger.info("[Site Watcher] No user-followed sites due for a check. Waiting...")
         return 0, 0
 
     total_discovered = 0
@@ -178,18 +214,33 @@ def run_site_watch_cycle(max_extract_per_site: int = 3) -> tuple[int, int]:
         root_url = site["root_url"]
         site_id = site.get("id")
         site_key = str(site_id or root_url)
-        select_paths = site.get("select_paths") or ["/news/.*", "/blog/.*"]
+        # User-followed sites have no known path layout; the first map at
+        # follow time used none either, so the daily diff compares like with like.
+        select_paths = None
 
         logger.info("[Site Watch: %s] Mapping URL structure via Tavily Map...", site_name)
         map_resp = tavily_map(
             url=root_url,
-            select_paths=select_paths,
             exclude_paths=NOISE_PATTERNS,
-            instructions="news articles, blog posts and press releases only",
-            limit=50,
+            max_depth=SITE_MAP_DEPTH,
+            limit=SITE_MAP_LIMIT,
             purpose="site_watch"
         )
         found_urls = map_resp.get("results", [])
+        # Stamp the check even when nothing is new, so the site is not mapped
+        # again before it is due.
+        if site_id:
+            try:
+                from db import pool
+                with pool.connection(timeout=0.3) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE watched_sites SET last_mapped_at = NOW(), last_checked_at = NOW() WHERE id = %s;",
+                            (site_id,)
+                        )
+                    conn.commit()
+            except Exception:
+                pass
         if not found_urls:
             continue
 
@@ -197,7 +248,7 @@ def run_site_watch_cycle(max_extract_per_site: int = 3) -> tuple[int, int]:
         clean_urls: List[str] = []
         for u in found_urls:
             canonical = canonicalize_url(u)
-            if canonical and is_valid_news_url(canonical) and canonical not in clean_urls:
+            if canonical and is_post_url(canonical, root_url) and canonical not in clean_urls:
                 clean_urls.append(canonical)
 
         logger.info("[Site Watch: %s] Discovered %d valid candidate URLs.", site_name, len(clean_urls))
@@ -276,8 +327,8 @@ def run_site_watch_cycle(max_extract_per_site: int = 3) -> tuple[int, int]:
         payload = []
         for r in extracted_results:
             raw_url = r.get("url", "")
-            title = r.get("title", f"Update from {site_name}")
             raw_text = r.get("raw_content", "")
+            title = r.get("title") or guess_title(raw_url, raw_text)
 
             cleaned_text = clean_article_markdown(title, raw_text)
             if not cleaned_text or len(cleaned_text) < 200:
@@ -299,7 +350,7 @@ def run_site_watch_cycle(max_extract_per_site: int = 3) -> tuple[int, int]:
                     API_INGEST_URL,
                     json=payload,
                     headers={"x-secret": secret},
-                    timeout=3.0
+                    timeout=30.0  # ingest looks up a cover image per post (~2.5 s each)
                 )
                 if resp.status_code == 200:
                     inserted = resp.json().get("inserted", 0)
@@ -316,7 +367,7 @@ def main():
     parser = argparse.ArgumentParser(description="FeedProof RSS-less Site Watcher")
     parser.add_argument("--once", action="store_true", default=True, help="Run a single watch cycle and exit (default)")
     parser.add_argument("--loop", action="store_true", help="Run continuously in background")
-    parser.add_argument("--interval", type=int, default=86400, help="Loop interval in seconds (default: 86400s / 24 hours)")
+    parser.add_argument("--interval", type=int, default=3600, help="Seconds between checks (default 1 h); each site is mapped at most once per 20 h")
     args = parser.parse_args()
 
     while True:

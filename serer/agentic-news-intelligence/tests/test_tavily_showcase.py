@@ -19,8 +19,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-# Ensure test uses live mode or test environment
-os.environ["TAVILY_MOCK"] = "0"
+# This suite writes test rows (tavily_calls, articles, users, sites) into the
+# database the app uses; its fake calls would show in the Tavily terminal as
+# real ones. Run it only against a throwaway database, on purpose.
+if os.environ.get("ALLOW_DB_WRITE_TESTS") != "1":
+    print("Skipped: writes to the app database. Set ALLOW_DB_WRITE_TESTS=1 "
+          "and point DATABASE_URL at a throwaway database to run it.")
+    sys.exit(0)
+
+# Mock Tavily: site follows in this suite would otherwise spend real credits.
+os.environ["TAVILY_MOCK"] = "1"
 os.environ["INGESTION_SECRET"] = os.environ.get("INGESTION_SECRET", "test-secret-123")
 
 from main import app
