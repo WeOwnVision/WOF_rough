@@ -89,6 +89,10 @@ CREATE TABLE IF NOT EXISTS evidence_cards (
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS error_message TEXT;
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS retry_count INT DEFAULT 0;
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS fact_check_cache JSONB;
+
+-- 6. Article cover images (also in schema.sql; existing databases need them here)
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_url TEXT;
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_status VARCHAR(50);
 """
 
 def sanitize_and_prewarm_db() -> None:
