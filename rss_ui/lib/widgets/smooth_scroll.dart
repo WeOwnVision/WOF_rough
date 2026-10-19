@@ -7,12 +7,19 @@ import 'package:flutter/material.dart';
 class SmoothScrollController extends ScrollController {
   SmoothScrollController({super.initialScrollOffset, super.debugLabel});
 
+  /// When true, acts as a plain [ScrollController] by delegating directly
+  /// to [super.createScrollPosition] for A/B performance profiling.
+  static bool usePlainController = true;
+
   @override
   ScrollPosition createScrollPosition(
     ScrollPhysics physics,
     ScrollContext context,
     ScrollPosition? oldPosition,
   ) {
+    if (usePlainController) {
+      return super.createScrollPosition(physics, context, oldPosition);
+    }
     return _SmoothScrollPosition(
       physics: physics,
       context: context,
@@ -39,22 +46,31 @@ class _SmoothScrollPosition extends ScrollPositionWithSingleContext {
 
   @override
   void pointerScroll(double delta) {
-    // Dokunmatik yüzey küçük ve sık adımlar gönderir, zaten akıcıdır.
+    // Dokunmatik yüzey (trackpad) ve yüksek hassasiyetli tekerlekler küçük ve sık adımlar
+    // gönderir. Bunları doğrudan platform fiziğine bırakıyoruz; animasyon eklemek
+    // tarayıcının kendi ivmelenmesiyle çatışıp takılmaya yol açar.
     if (delta.abs() < 40) {
       _target = null;
       super.pointerScroll(delta);
       return;
     }
-    final from = _target != null && isScrollingNotifier.value
-        ? _target!
-        : pixels;
-    final target = (from + delta).clamp(minScrollExtent, maxScrollExtent);
-    if (target == pixels) return;
+
+    // Klasik kademeli fare tekerleği tıkları:
+    final currentPixels = pixels;
+    final base = (_target != null && isScrollingNotifier.value) ? _target! : currentPixels;
+    final target = (base + delta).clamp(minScrollExtent, maxScrollExtent);
+    if ((target - currentPixels).abs() < 0.5) return;
     _target = target;
+
+    // Hızlı tıklandığında süre mesafeye göre orantılı ayarlanır, böylece kuyrukta birikip
+    // gecikme (lag) hissi oluşturmaz. easeOutQuad ile ilk hız yüksek başlar.
+    final remainingDist = (target - currentPixels).abs();
+    final durationMs = (110 + (remainingDist * 0.18)).clamp(110, 220).toInt();
+
     animateTo(
       target,
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOutCubic,
+      duration: Duration(milliseconds: durationMs),
+      curve: Curves.easeOutQuad,
     );
   }
 }
