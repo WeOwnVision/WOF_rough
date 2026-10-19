@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,6 +11,7 @@ import '../../services/api_service.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
+import '../../widgets/simple_markdown.dart';
 import '../../widgets/smooth_scroll.dart';
 import '../../widgets/state_views.dart';
 import 'web_ui.dart';
@@ -52,12 +55,82 @@ class _ArticleDialogState extends State<_ArticleDialog> {
   bool _asking = false;
   final List<Map<String, String>> _qaHistory = [];
 
+  /// Tavily Research (kanıt kartının altında, istenince).
+  ArticleResearch? _research;
+  bool _researching = false;
+  String? _researchError;
+  Timer? _researchPoll;
+
   @override
   void initState() {
     super.initState();
     _factCheck = widget.article.factCheckCache;
     _loadDetail();
     _loadComments();
+    _loadResearch();
+  }
+
+  /// Kaydedilmiş Research raporu varsa gösterir (kredi harcamaz).
+  Future<void> _loadResearch() async {
+    try {
+      final r = await _state.api.getResearch(widget.article.id);
+      if (!mounted || r.status == 'none') return;
+      setState(() => _research = r);
+      if (r.isRunning) _pollResearch();
+    } on ApiException {
+      // Rapor yoksa düğme görünür.
+    }
+  }
+
+  Future<void> _startResearch() async {
+    if (_researching) return;
+    setState(() {
+      _researching = true;
+      _researchError = null;
+    });
+    try {
+      final r = await _state.api.startResearch(widget.article.id);
+      if (!mounted) return;
+      setState(() => _research = r);
+      if (r.isRunning) {
+        _pollResearch();
+      } else if (!r.isCompleted) {
+        setState(() => _researchError = 'Tavily Research could not finish.');
+      }
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _researchError = e.userMessage);
+    } finally {
+      if (mounted && !(_research?.isRunning ?? false)) {
+        setState(() => _researching = false);
+      }
+    }
+  }
+
+  /// Sunucu raporu 25 sn içinde bitiremediyse 5 sn'de bir sorulur (en çok
+  /// 3 dk); her soru sunucuda Tavily'ye işin durumunu sorar, kredi harcamaz.
+  void _pollResearch() {
+    _researchPoll?.cancel();
+    var tries = 0;
+    _researching = true;
+    _researchPoll = Timer.periodic(const Duration(seconds: 5), (t) async {
+      tries++;
+      try {
+        final r = await _state.api.getResearch(widget.article.id);
+        if (!mounted) return t.cancel();
+        if (!r.isRunning || tries >= 36) {
+          t.cancel();
+          setState(() {
+            _research = r;
+            _researching = false;
+            if (!r.isCompleted) {
+              _researchError = 'Tavily Research could not finish.';
+            }
+          });
+        }
+      } on ApiException {
+        // Bir sonraki denemede tekrar sorulur.
+      }
+    });
   }
 
   @override
@@ -65,6 +138,7 @@ class _ArticleDialogState extends State<_ArticleDialog> {
     _commentCtrl.dispose();
     _scroll.dispose();
     _askCtrl.dispose();
+    _researchPoll?.cancel();
     super.dispose();
   }
 
@@ -493,7 +567,7 @@ class _ArticleDialogState extends State<_ArticleDialog> {
             ),
             const SizedBox(height: 10),
             Text(
-              'Tavily Web Agent + Nemotron-3-Ultra cross-referencing sources...',
+              'Tavily Search and Extract are checking independent sources...',
               style: GoogleFonts.inter(
                 color: AppColors.textMuted,
                 fontSize: 12,
@@ -842,8 +916,12 @@ class _ArticleDialogState extends State<_ArticleDialog> {
           const SizedBox(height: 20),
           const Divider(color: AppColors.border),
           const SizedBox(height: 14),
+          _researchSection(),
+          const SizedBox(height: 20),
+          const Divider(color: AppColors.border),
+          const SizedBox(height: 14),
           Text(
-            'Ask Grounded Nemotron-3-Ultra',
+            'Ask about this story',
             style: GoogleFonts.inter(
               color: AppColors.textPrimary,
               fontSize: 14,
@@ -946,6 +1024,166 @@ class _ArticleDialogState extends State<_ArticleDialog> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Tavily Research: istenince haber hakkında çok kaynaklı, atıflı rapor.
+  /// Sonuç sunucuda haber başına saklanır; sonraki açılışlar kredi harcamaz.
+  Widget _researchSection() {
+    final r = _research;
+    final heading = Row(
+      children: [
+        const Icon(
+          Icons.travel_explore_rounded,
+          size: 18,
+          color: AppColors.accentLight,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          'Tavily Research',
+          style: GoogleFonts.inter(
+            color: AppColors.textPrimary,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const Spacer(),
+        if (r != null && r.isCompleted)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: AppColors.border,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              r.cached
+                  ? 'Saved report · 0 credits'
+                  : '${(r.credits ?? 0).round()} Tavily credits',
+              style: GoogleFonts.inter(
+                color: AppColors.mint,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+      ],
+    );
+
+    if (_researching || (r?.isRunning ?? false)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          heading,
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.accentLight,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Tavily Research is reading sources and writing a cited '
+                  'report. This takes up to a minute.',
+                  style: GoogleFonts.inter(
+                    color: AppColors.textBody,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    if (r != null && r.isCompleted) {
+      const shown = 8;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          heading,
+          const SizedBox(height: 12),
+          SimpleMarkdown(r.report!, fontSize: 14.5),
+          if (r.sources.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              '${r.sources.length} sources',
+              style: GoogleFonts.inter(
+                color: AppColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final (i, src) in r.sources.take(shown).indexed)
+                  ActionChip(
+                    label: Text(
+                      '[${i + 1}] ${Uri.tryParse(src.url)?.host ?? src.url}',
+                      style: GoogleFonts.inter(
+                        fontSize: 11.5,
+                        color: AppColors.textPrimary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    tooltip: src.title,
+                    backgroundColor: AppColors.surface,
+                    side: const BorderSide(color: AppColors.border),
+                    onPressed: () => _openOriginal(src.url),
+                  ),
+                if (r.sources.length > shown)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      '+${r.sources.length - shown} more',
+                      style: GoogleFonts.inter(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        heading,
+        const SizedBox(height: 8),
+        Text(
+          'Want the bigger picture? Tavily Research reads many sources about '
+          'this story and writes a cited report. It uses about 25 Tavily '
+          'credits once; after that the report is saved for everyone.',
+          style: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 12.5),
+        ),
+        if (_researchError != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _researchError!,
+            style: GoogleFonts.inter(color: AppColors.dislike, fontSize: 12.5),
+          ),
+        ],
+        const SizedBox(height: 12),
+        WebButton(
+          label: _researchError == null ? 'Research deeper' : 'Try again',
+          icon: Icons.travel_explore_rounded,
+          primary: false,
+          onTap: _startResearch,
+        ),
+      ],
     );
   }
 

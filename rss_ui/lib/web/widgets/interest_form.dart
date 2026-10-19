@@ -94,6 +94,9 @@ class _InterestFormState extends State<InterestForm> {
   String? _followMacro;
   String? _followError;
 
+  /// "Follow a site": adres alanı. Siteler anında kaydedilir (AppState).
+  final _siteCtrl = TextEditingController();
+
   /// "Neden" cümlesi: akış bu cümleye anlamca yakın haberleri öne alır.
   late final _contextCtrl = TextEditingController(text: widget.initialContext);
 
@@ -116,6 +119,7 @@ class _InterestFormState extends State<InterestForm> {
   @override
   void dispose() {
     _followCtrl.dispose();
+    _siteCtrl.dispose();
     _contextCtrl.dispose();
     super.dispose();
   }
@@ -246,6 +250,8 @@ class _InterestFormState extends State<InterestForm> {
             const SizedBox(height: 14),
             _followSection(taxonomy),
             const SizedBox(height: 32),
+            _siteSection(),
+            const SizedBox(height: 32),
             _contextSection(),
             const SizedBox(height: 28),
             _footer(taxonomy),
@@ -273,6 +279,8 @@ class _InterestFormState extends State<InterestForm> {
           _topics(taxonomy),
           const SizedBox(height: 14),
           _followSection(taxonomy),
+          const SizedBox(height: 32),
+          _siteSection(),
         ],
       ),
       _ => _contextSection(showHeading: false),
@@ -580,6 +588,115 @@ class _InterestFormState extends State<InterestForm> {
     );
   }
 
+  Future<void> _addSite() async {
+    if (await _state.addSite(_siteCtrl.text)) _siteCtrl.clear();
+  }
+
+  /// "Follow a site": RSS'i olmayan bir haber odası ya da blog. Sunucu siteyi
+  /// Tavily Map ile tarar, en yeni yazıları Crawl ile akışa ekler, sonra
+  /// günde bir yeni yazılara bakar. Ekleme ve silme anında kaydedilir.
+  Widget _siteSection() {
+    final sites = _state.sites;
+    final full = sites.length >= ApiService.maxSites;
+    final enabled = _state.hasServerUser && !full && !_state.addingSite;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Follow a site',
+              style: GoogleFonts.playfairDisplay(
+                color: AppColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const OverlineLabel('Optional'),
+            const Spacer(),
+            Text(
+              '${sites.length} / ${ApiService.maxSites}',
+              style: GoogleFonts.inter(
+                color: AppColors.textMuted,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'A newsroom or blog, even one without RSS, e.g. anthropic.com/news. '
+          'Tavily maps the site and brings its newest posts into your Feed.',
+          style: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 13.5),
+        ),
+        const SizedBox(height: 14),
+        Opacity(
+          opacity: enabled || _state.addingSite ? 1 : 0.5,
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _siteCtrl,
+                  enabled: enabled,
+                  onSubmitted: (_) => _addSite(),
+                  cursorColor: AppColors.accentLight,
+                  style: GoogleFonts.inter(
+                    color: AppColors.textPrimary,
+                    fontSize: 14.5,
+                  ),
+                  decoration: _inputDecoration(
+                    full
+                        ? 'You follow ${ApiService.maxSites} sites'
+                        : 'Paste a site address',
+                    prefixIcon: const Icon(
+                      Icons.language_rounded,
+                      color: AppColors.iconMuted,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              if (_state.addingSite)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 22),
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: AppColors.accentLight,
+                    ),
+                  ),
+                )
+              else
+                WebButton(label: 'Follow', primary: false, onTap: _addSite),
+            ],
+          ),
+        ),
+        if (_state.siteError != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _state.siteError!,
+            style: GoogleFonts.inter(color: AppColors.dislike, fontSize: 13),
+          ),
+        ],
+        if (sites.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final site in sites)
+                _SiteChip(site: site, onRemove: () => _state.removeSite(site)),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
   /// "What should your feed help you with?": isteğe bağlı tek cümle, her
   /// dilde. Sunucu cümleyi İngilizceye çevirip ilgi vektörünü ondan kurar.
   /// [showHeading] false ise başlığı adımın kendi başlığı verir.
@@ -853,6 +970,79 @@ class _FollowChip extends StatelessWidget {
   }
 }
 
+/// Takip edilen site: alan adı, tarama durumu ve kaldırma düğmesi.
+class _SiteChip extends StatelessWidget {
+  const _SiteChip({required this.site, required this.onRemove});
+
+  final FollowedSite site;
+  final VoidCallback onRemove;
+
+  String get _statusText => switch (site.status) {
+    'pending' => 'Queued',
+    'mapping' => 'Mapping the site…',
+    'crawling' => 'Reading newest posts…',
+    'ready' => site.articleCount == 1 ? '1 post' : '${site.articleCount} posts',
+    'no_articles' => 'No posts found',
+    _ => "Couldn't scan",
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final problem = site.status == 'no_articles' || site.status == 'failed';
+    final color = problem ? AppColors.dislike : AppColors.mint;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            site.name,
+            style: GoogleFonts.inter(
+              color: AppColors.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (site.isWorking) ...[
+            SizedBox(
+              width: 11,
+              height: 11,
+              child: CircularProgressIndicator(strokeWidth: 1.6, color: color),
+            ),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            _statusText,
+            style: GoogleFonts.inter(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Tooltip(
+            message: 'Stop following ${site.name}',
+            child: Hoverable(
+              onTap: onRemove,
+              builder: (context, hovered) => Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: hovered ? AppColors.textPrimary : AppColors.textMuted,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Kategoriye göre simge.
 IconData categoryIcon(String macro) => switch (macro) {
   'Tech' => Icons.code_rounded,
@@ -889,10 +1079,10 @@ class _CategoryGrid extends StatelessWidget {
       builder: (context, c) {
         final cols =
             columns ?? ((c.maxWidth + gap) ~/ (240 + gap)).clamp(1, 4).toInt();
-        final width = (c.maxWidth - gap * (cols - 1)) / cols;
         final first = selected.isEmpty ? null : selected.first;
-        // Satır satır: bir satırdaki kartlar en uzun açıklamaya göre aynı
-        // yükseklikte olur, metin kesilmez.
+        // Satır satır, eşit genişlik ve sabit yükseklik: en uzun başlık (2
+        // satır) ve açıklama (4 satır) sığar. IntrinsicHeight burada metni
+        // kısa ölçüp açıklamayı kartın dışına taşırıyordu.
         final rows = [
           for (var i = 0; i < taxonomy.length; i += cols)
             taxonomy.sublist(i, math.min(i + cols, taxonomy.length)),
@@ -901,15 +1091,18 @@ class _CategoryGrid extends StatelessWidget {
           children: [
             for (var r = 0; r < rows.length; r++) ...[
               if (r > 0) const SizedBox(height: gap),
-              IntrinsicHeight(
+              SizedBox(
+                height: _CategoryCard.height,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
+                  // Son satırdaki boş yerler boş sütunla doldurulur.
                   children: [
-                    for (var i = 0; i < rows[r].length; i++) ...[
+                    for (var i = 0; i < cols; i++) ...[
                       if (i > 0) const SizedBox(width: gap),
-                      SizedBox(
-                        width: width,
-                        child: _card(rows[r][i], first, r * cols + i),
+                      Expanded(
+                        child: i < rows[r].length
+                            ? _card(rows[r][i], first, r * cols + i)
+                            : const SizedBox.shrink(),
                       ),
                     ],
                   ],
@@ -991,6 +1184,9 @@ class _CategoryCard extends StatelessWidget {
     required this.onTap,
   });
 
+  /// Simge, 2 satır başlık ve 4 satır açıklama sığar.
+  static const double height = 204;
+
   final TaxonomyCategory category;
   final bool selected;
 
@@ -1009,7 +1205,6 @@ class _CategoryCard extends StatelessWidget {
         onTap: onTap,
         builder: (context, hovered) => AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          constraints: const BoxConstraints(minHeight: 156),
           padding: const EdgeInsets.fromLTRB(18, 16, 16, 18),
           decoration: BoxDecoration(
             color: selected
@@ -1090,7 +1285,7 @@ class _CategoryCard extends StatelessWidget {
               const SizedBox(height: 14),
               Text(
                 category.displayName,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.inter(
                   color: AppColors.textPrimary,
@@ -1101,6 +1296,8 @@ class _CategoryCard extends StatelessWidget {
               const SizedBox(height: 5),
               Text(
                 category.description,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.inter(
                   color: AppColors.textMuted,
                   fontSize: 12.5,

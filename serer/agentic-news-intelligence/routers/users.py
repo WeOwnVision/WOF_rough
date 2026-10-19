@@ -855,10 +855,12 @@ def follow_site(user_id: str, req: SiteFollowRequest, background_tasks: Backgrou
             VALUES (%s, %s, 'pending')
             ON CONFLICT (root_url) DO UPDATE
             SET is_active = TRUE
-            RETURNING id, site_name, root_url, status, article_count, last_checked_at;
+            RETURNING id, site_name, root_url, status, article_count, last_checked_at,
+                      (xmax = 0) AS inserted,
+                      (last_mapped_at IS NULL OR last_mapped_at < NOW() - INTERVAL '20 hours') AS map_due;
         """, (site_name, canonical_url))
         row = cur.fetchone()
-        site_id, site_name, root_url, status, article_count, last_checked_at = row
+        site_id, site_name, root_url, status, article_count, last_checked_at, inserted, map_due = row
 
         # Link in user_watched_sites
         cur.execute("""
@@ -867,7 +869,11 @@ def follow_site(user_id: str, req: SiteFollowRequest, background_tasks: Backgrou
             ON CONFLICT (user_id, site_id) DO NOTHING;
         """, (valid_user_id, site_id))
 
-    background_tasks.add_task(_process_site_follow, str(site_id), canonical_url, site_name)
+    # A site someone already follows is shared: scan it only when it is new,
+    # failed last time, or its last map is older than the daily check.
+    busy = status in ("pending", "mapping", "crawling") and not inserted
+    if inserted or (not busy and (status == "failed" or map_due)):
+        background_tasks.add_task(_process_site_follow, str(site_id), canonical_url, site_name)
 
     return SiteOut(
         id=str(site_id),

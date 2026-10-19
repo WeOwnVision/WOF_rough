@@ -13,6 +13,7 @@ import '../../widgets/smooth_scroll.dart';
 import '../../widgets/state_views.dart';
 import '../widgets/article_dialog.dart';
 import '../widgets/interest_form.dart';
+import '../widgets/tavily_terminal.dart';
 import '../widgets/web_ui.dart';
 
 /// İlk giriş: 60 saniyede kişisel akış.
@@ -32,34 +33,44 @@ class WebOnboardingPage extends StatelessWidget {
     final state = AppState.instance;
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SmoothScroll(
-        builder: (context, scroll) => ListenableBuilder(
-          listenable: state,
-          builder: (context, _) {
-            final step = state.onboardingStep ?? OnboardingStep.pick;
-            return SingleChildScrollView(
-              controller: scroll,
-              padding: const EdgeInsets.fromLTRB(32, 28, 32, 56),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1080),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _Header(state: state, step: step),
-                      const SizedBox(height: 44),
-                      switch (step) {
-                        OnboardingStep.pick => _PickStep(state: state),
-                        OnboardingStep.taste => _TasteStep(state: state),
-                        OnboardingStep.reveal => _RevealStep(state: state),
-                      },
-                    ],
-                  ),
+      // Sağda Tavily terminali: site eklenince Map ve Crawl burada akar.
+      body: Row(
+        children: [
+          Expanded(child: _body(state)),
+          const TavilyDock(),
+        ],
+      ),
+    );
+  }
+
+  Widget _body(AppState state) {
+    return SmoothScroll(
+      builder: (context, scroll) => ListenableBuilder(
+        listenable: state,
+        builder: (context, _) {
+          final step = state.onboardingStep ?? OnboardingStep.pick;
+          return SingleChildScrollView(
+            controller: scroll,
+            padding: const EdgeInsets.fromLTRB(32, 28, 32, 56),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1080),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _Header(state: state, step: step),
+                    const SizedBox(height: 44),
+                    switch (step) {
+                      OnboardingStep.pick => _PickStep(state: state),
+                      OnboardingStep.taste => _TasteStep(state: state),
+                      OnboardingStep.reveal => _RevealStep(state: state),
+                    },
+                  ],
                 ),
               ),
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -82,6 +93,8 @@ class _Header extends StatelessWidget {
         const SizedBox(width: 32),
         _StepIndicator(step: step),
         const Spacer(),
+        const TavilyTerminalButton(),
+        const SizedBox(width: 20),
         Text(
           'Signed in as ${state.user?.username ?? ''}',
           style: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 13),
@@ -231,7 +244,7 @@ class _PickStep extends StatelessWidget {
       title: 'Narrow it down',
       subtitle:
           'Topics decide which stories come first. You can also follow a '
-          'company, product or person. Both are optional.',
+          'company, product or person, or a site. All of these are optional.',
     ),
     _StepTitle(
       overline: 'Step 1 of 3 · Your why',
