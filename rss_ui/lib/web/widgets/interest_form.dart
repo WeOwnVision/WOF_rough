@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:collection';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -26,6 +28,8 @@ class InterestForm extends StatefulWidget {
     this.initialContext = '',
     this.secondaryAction,
     this.columns,
+    this.stepped = false,
+    this.headerBuilder,
   });
 
   final String submitLabel;
@@ -50,6 +54,14 @@ class InterestForm extends StatefulWidget {
 
   /// Kategori kartı sütun sayısı; verilmezse genişliğe göre seçilir.
   final int? columns;
+
+  /// Onboarding: kategoriler, konular ve cümle ayrı adımlarda, animasyonla
+  /// gelir. Profildeki düzenleme penceresi hepsini tek sayfada gösterir.
+  final bool stepped;
+
+  /// [stepped] modunda her adımın başlığı (0: kategoriler, 1: konular,
+  /// 2: cümle).
+  final Widget Function(int step)? headerBuilder;
 
   /// Sunucunun kabul ettiği en fazla alt etiket sayısı.
   static const maxTopics = 12;
@@ -84,6 +96,11 @@ class _InterestFormState extends State<InterestForm> {
 
   /// "Neden" cümlesi: akış bu cümleye anlamca yakın haberleri öne alır.
   late final _contextCtrl = TextEditingController(text: widget.initialContext);
+
+  /// [InterestForm.stepped] modundaki adım ve geçiş yönü.
+  int _step = 0;
+  bool _forward = true;
+  static const _lastStep = 2;
 
   static final _urlish = RegExp(
     r'https?://|www\.|\.(com|net|org|io)\b',
@@ -178,6 +195,19 @@ class _InterestFormState extends State<InterestForm> {
         _micros.add(tag);
       });
 
+  /// Adım değişince sayfa başa kayar; yeni adım üstten başlar.
+  void _goTo(int step) {
+    setState(() {
+      _forward = step > _step;
+      _step = step;
+    });
+    Scrollable.maybeOf(context)?.position.animateTo(
+      0,
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   Future<void> _submit(List<TaxonomyCategory> taxonomy) async {
     final macros = _selectedMacros(taxonomy);
     if (macros.isEmpty || _state.savingPreferences) return;
@@ -201,6 +231,7 @@ class _InterestFormState extends State<InterestForm> {
               ? ErrorView(error: error, onRetry: _state.loadTaxonomy)
               : const LoadingView(message: 'Loading topics…');
         }
+        if (widget.stepped) return _steppedBody(taxonomy);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -221,6 +252,77 @@ class _InterestFormState extends State<InterestForm> {
           ],
         );
       },
+    );
+  }
+
+  /// Onboarding: kategoriler → konular ve "+" takip → cümle. Adımlar
+  /// kayarak ve solarak değişir; ileri giderken sağdan, geri giderken
+  /// soldan gelir.
+  Widget _steppedBody(List<TaxonomyCategory> taxonomy) {
+    final body = switch (_step) {
+      0 => _CategoryGrid(
+        taxonomy: taxonomy,
+        selected: _macros,
+        columns: widget.columns,
+        onToggle: _toggleMacro,
+        animateIn: true,
+      ),
+      1 => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _topics(taxonomy),
+          const SizedBox(height: 14),
+          _followSection(taxonomy),
+        ],
+      ),
+      _ => _contextSection(showHeading: false),
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 380),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            layoutBuilder: (current, previous) => Stack(
+              fit: StackFit.passthrough,
+              alignment: Alignment.topLeft,
+              children: [...previous, if (current != null) current],
+            ),
+            transitionBuilder: (child, animation) {
+              final incoming = child.key == ValueKey(_step);
+              final dx = incoming == _forward ? 0.06 : -0.06;
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween(
+                    begin: Offset(dx, 0),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              );
+            },
+            child: KeyedSubtree(
+              key: ValueKey(_step),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (widget.headerBuilder != null) ...[
+                    widget.headerBuilder!(_step),
+                    const SizedBox(height: 32),
+                  ],
+                  body,
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 28),
+        _footer(taxonomy),
+      ],
     );
   }
 
@@ -480,7 +582,8 @@ class _InterestFormState extends State<InterestForm> {
 
   /// "What should your feed help you with?": isteğe bağlı tek cümle, her
   /// dilde. Sunucu cümleyi İngilizceye çevirip ilgi vektörünü ondan kurar.
-  Widget _contextSection() {
+  /// [showHeading] false ise başlığı adımın kendi başlığı verir.
+  Widget _contextSection({bool showHeading = true}) {
     return ListenableBuilder(
       listenable: _contextCtrl,
       builder: (context, _) {
@@ -488,43 +591,46 @@ class _InterestFormState extends State<InterestForm> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    'What should your feed help you with?',
-                    style: GoogleFonts.playfairDisplay(
-                      color: AppColors.textPrimary,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w500,
+            if (showHeading) ...[
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      'What should your feed help you with?',
+                      style: GoogleFonts.playfairDisplay(
+                        color: AppColors.textPrimary,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                const OverlineLabel('Optional'),
-                const Spacer(),
-                Text(
-                  '${_contextCtrl.text.length} / ${ApiService.maxContextChars}',
-                  style: GoogleFonts.inter(
-                    color: AppColors.textMuted,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                  const SizedBox(width: 12),
+                  const OverlineLabel('Optional'),
+                  const Spacer(),
+                  Text(
+                    '${_contextCtrl.text.length} / ${ApiService.maxContextChars}',
+                    style: GoogleFonts.inter(
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'One sentence, in any language. Stories closer to it rank '
-              'higher in your Feed.',
-              style: GoogleFonts.inter(
-                color: AppColors.textMuted,
-                fontSize: 13.5,
+                ],
               ),
-            ),
-            const SizedBox(height: 14),
+              const SizedBox(height: 6),
+              Text(
+                'One sentence, in any language. Stories closer to it rank '
+                'higher in your Feed.',
+                style: GoogleFonts.inter(
+                  color: AppColors.textMuted,
+                  fontSize: 13.5,
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
             TextField(
               controller: _contextCtrl,
+              autofocus: !showHeading,
               maxLength: ApiService.maxContextChars,
               minLines: 1,
               maxLines: 3,
@@ -585,6 +691,8 @@ class _InterestFormState extends State<InterestForm> {
     final topics = _selectedMicros(taxonomy).length;
     final error = _state.preferencesError;
     final saving = _state.savingPreferences;
+    final last = !widget.stepped || _step == _lastStep;
+    final back = widget.stepped && _step > 0;
 
     final String summary;
     if (macros.isEmpty) {
@@ -644,7 +752,14 @@ class _InterestFormState extends State<InterestForm> {
               ],
             ),
           ),
-          if (widget.secondaryAction != null) ...[
+          if (back) ...[
+            const SizedBox(width: 12),
+            WebButton(
+              label: 'Back',
+              primary: false,
+              onTap: () => _goTo(_step - 1),
+            ),
+          ] else if (widget.secondaryAction != null) ...[
             const SizedBox(width: 12),
             widget.secondaryAction!,
           ],
@@ -667,9 +782,11 @@ class _InterestFormState extends State<InterestForm> {
               child: IgnorePointer(
                 ignoring: macros.isEmpty,
                 child: WebButton(
-                  label: widget.submitLabel,
+                  label: last ? widget.submitLabel : 'Next',
                   icon: Icons.arrow_forward_rounded,
-                  onTap: () => _submit(taxonomy),
+                  onTap: last
+                      ? () => _submit(taxonomy)
+                      : () => _goTo(_step + 1),
                 ),
               ),
             ),
@@ -754,12 +871,16 @@ class _CategoryGrid extends StatelessWidget {
     required this.selected,
     required this.onToggle,
     this.columns,
+    this.animateIn = false,
   });
 
   final List<TaxonomyCategory> taxonomy;
   final LinkedHashSet<String> selected;
   final ValueChanged<String> onToggle;
   final int? columns;
+
+  /// Kartlar sırayla aşağıdan yükselerek belirir (onboarding).
+  final bool animateIn;
 
   @override
   Widget build(BuildContext context) {
@@ -770,23 +891,94 @@ class _CategoryGrid extends StatelessWidget {
             columns ?? ((c.maxWidth + gap) ~/ (240 + gap)).clamp(1, 4).toInt();
         final width = (c.maxWidth - gap * (cols - 1)) / cols;
         final first = selected.isEmpty ? null : selected.first;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
+        // Satır satır: bir satırdaki kartlar en uzun açıklamaya göre aynı
+        // yükseklikte olur, metin kesilmez.
+        final rows = [
+          for (var i = 0; i < taxonomy.length; i += cols)
+            taxonomy.sublist(i, math.min(i + cols, taxonomy.length)),
+        ];
+        return Column(
           children: [
-            for (final cat in taxonomy)
-              SizedBox(
-                width: width,
-                child: _CategoryCard(
-                  category: cat,
-                  selected: selected.contains(cat.macro),
-                  isFirst: cat.macro == first,
-                  onTap: () => onToggle(cat.macro),
+            for (var r = 0; r < rows.length; r++) ...[
+              if (r > 0) const SizedBox(height: gap),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < rows[r].length; i++) ...[
+                      if (i > 0) const SizedBox(width: gap),
+                      SizedBox(
+                        width: width,
+                        child: _card(rows[r][i], first, r * cols + i),
+                      ),
+                    ],
+                  ],
                 ),
               ),
+            ],
           ],
         );
       },
+    );
+  }
+
+  Widget _card(TaxonomyCategory cat, String? first, int index) {
+    final card = _CategoryCard(
+      category: cat,
+      selected: selected.contains(cat.macro),
+      isFirst: cat.macro == first,
+      onTap: () => onToggle(cat.macro),
+    );
+    if (!animateIn) return card;
+    return _RiseIn(
+      delay: Duration(milliseconds: 120 + 70 * index),
+      child: card,
+    );
+  }
+}
+
+/// [delay] sonra aşağıdan yükselip solarak belirir; yalnızca ilk çizimde.
+class _RiseIn extends StatefulWidget {
+  const _RiseIn({required this.delay, required this.child});
+
+  final Duration delay;
+  final Widget child;
+
+  @override
+  State<_RiseIn> createState() => _RiseInState();
+}
+
+class _RiseInState extends State<_RiseIn> {
+  bool _shown = false;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(widget.delay, () {
+      if (mounted) setState(() => _shown = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const duration = Duration(milliseconds: 460);
+    return AnimatedSlide(
+      offset: _shown ? Offset.zero : const Offset(0, 0.15),
+      duration: duration,
+      curve: Curves.easeOutCubic,
+      child: AnimatedOpacity(
+        opacity: _shown ? 1 : 0,
+        duration: duration,
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
     );
   }
 }
@@ -817,8 +1009,8 @@ class _CategoryCard extends StatelessWidget {
         onTap: onTap,
         builder: (context, hovered) => AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          height: 156,
-          padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
+          constraints: const BoxConstraints(minHeight: 156),
+          padding: const EdgeInsets.fromLTRB(18, 16, 16, 18),
           decoration: BoxDecoration(
             color: selected
                 ? color.withValues(alpha: 0.10)
@@ -907,16 +1099,12 @@ class _CategoryCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 5),
-              Expanded(
-                child: Text(
-                  category.description,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
-                    color: AppColors.textMuted,
-                    fontSize: 12.5,
-                    height: 1.45,
-                  ),
+              Text(
+                category.description,
+                style: GoogleFonts.inter(
+                  color: AppColors.textMuted,
+                  fontSize: 12.5,
+                  height: 1.45,
                 ),
               ),
             ],

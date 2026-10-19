@@ -148,14 +148,7 @@ class _WebHomePageState extends State<WebHomePage> {
                     columns: columns,
                   ),
                   const SizedBox(height: 44),
-                  const Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(flex: 7, child: _SavedPanel()),
-                      SizedBox(width: 24),
-                      Expanded(flex: 5, child: _StreakPanel()),
-                    ],
-                  ),
+                  const _SavedPanel(),
                 ],
               );
             },
@@ -382,111 +375,6 @@ class _SavedPanelState extends State<_SavedPanel> {
           ),
         );
       },
-    );
-  }
-}
-
-class _StreakPanel extends StatelessWidget {
-  const _StreakPanel();
-
-  static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  static const _minutes = [18, 25, 12, 30, 22, 9, 16];
-
-  @override
-  Widget build(BuildContext context) {
-    final today = DateTime.now().weekday - 1;
-    const maxMinutes = 30;
-    return PanelCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const OverlineLabel('Reading streak', color: AppColors.mint),
-          const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '14',
-                style: GoogleFonts.playfairDisplay(
-                  color: AppColors.textPrimary,
-                  fontSize: 52,
-                  fontWeight: FontWeight.w500,
-                  height: 1,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Text(
-                  'days in a row',
-                  style: GoogleFonts.inter(
-                    color: AppColors.textBody,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              const Icon(
-                Icons.local_fire_department_rounded,
-                color: AppColors.mint,
-                size: 36,
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            height: 120,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                for (var i = 0; i < 7; i++)
-                  Expanded(
-                    child: Tooltip(
-                      message: '${_minutes[i]} min read',
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Container(
-                            width: 22,
-                            height: 84 * _minutes[i] / maxMinutes,
-                            decoration: BoxDecoration(
-                              color: i == today
-                                  ? AppColors.accentLight
-                                  : AppColors.barInactive,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _days[i],
-                            style: GoogleFonts.inter(
-                              color: i == today
-                                  ? AppColors.textPrimary
-                                  : AppColors.textMuted,
-                              fontSize: 12,
-                              fontWeight: i == today
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'You read 2 h 12 min this week. 18 min left to reach your goal.',
-            style: GoogleFonts.inter(
-              color: AppColors.textBody,
-              fontSize: 13,
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
