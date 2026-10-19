@@ -2,10 +2,9 @@ import uuid
 import json
 import logging
 import asyncio
-import threading
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Tuple
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from db import get_db
@@ -164,8 +163,6 @@ class InspectionBroadcaster:
 
 _in_flight_broadcasters: Dict[str, InspectionBroadcaster] = {}
 _broadcaster_lock = asyncio.Lock()
-_in_flight_research: Dict[str, str] = {}
-_research_lock = threading.Lock()
 
 
 def map_evidence_to_fact_check_result(
@@ -382,136 +379,6 @@ async def deep_inspect_article(article_id: str):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
     )
-
-
-def _run_article_research_worker(article_id: str, question: str):
-    from tavily_service import tavily_research
-    try:
-        logger.info("[Article Research] Running Tavily Research for article %s: %s", article_id, question[:60])
-        res = tavily_research(
-            input_query=question,
-            model="mini",
-            purpose="deep_inspect_research",
-            detail=question
-        )
-        with get_db() as cur:
-            cur.execute("""
-                UPDATE articles
-                SET fact_check_cache = jsonb_set(
-                    COALESCE(fact_check_cache, '{}'::jsonb),
-                    '{research}',
-                    %s::jsonb
-                )
-                WHERE id = %s;
-            """, (json.dumps({
-                "status": "completed",
-                "query": question,
-                "research": res
-            }), article_id))
-        logger.info("[Article Research] Research completed and cached for %s", article_id)
-    except Exception as e:
-        logger.exception("[Article Research] Failed research for article %s: %s", article_id, e)
-        try:
-            with get_db() as cur:
-                cur.execute("""
-                    UPDATE articles
-                    SET fact_check_cache = jsonb_set(
-                        COALESCE(fact_check_cache, '{}'::jsonb),
-                        '{research}',
-                        %s::jsonb
-                    )
-                    WHERE id = %s;
-                """, (json.dumps({
-                    "status": "failed",
-                    "query": question,
-                    "error": str(e)
-                }), article_id))
-        except Exception:
-            pass
-    finally:
-        with _research_lock:
-            _in_flight_research.pop(article_id, None)
-
-
-@router.get("/api/articles/{article_id}/deep-inspect/research")
-def get_article_research(article_id: str):
-    """
-    Returns cached or active Tavily Research state for an article.
-    Matches Contract B: returns {"status": "none" | "running" | "completed" | "failed", ...}
-    """
-    valid_id = validate_uuid(article_id, "article_id")
-    with get_db() as cur:
-        cur.execute("SELECT fact_check_cache FROM articles WHERE id = %s;", (valid_id,))
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Article not found")
-
-    fc = row[0]
-    if fc:
-        cache_dict = fc if isinstance(fc, dict) else json.loads(fc)
-        research_entry = cache_dict.get("research")
-        if research_entry:
-            return research_entry
-
-    with _research_lock:
-        if valid_id in _in_flight_research:
-            return {"status": "running", "query": _in_flight_research[valid_id]}
-
-    return {"status": "none"}
-
-
-@router.post("/api/articles/{article_id}/deep-inspect/research")
-def trigger_article_research(article_id: str, background_tasks: BackgroundTasks):
-    """
-    Triggers an article-bound Tavily Research deep dive (Contract B).
-    Server constructs question automatically from article title and verified claims.
-    """
-    valid_id = validate_uuid(article_id, "article_id")
-    with get_db() as cur:
-        cur.execute("SELECT title, tldr, fact_check_cache FROM articles WHERE id = %s;", (valid_id,))
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Article not found")
-
-    title, tldr, fc_raw = row[0], row[1] or "", row[2]
-    fc = (fc_raw if isinstance(fc_raw, dict) else json.loads(fc_raw)) if fc_raw else {}
-
-    # 1. If already completed, return cached immediately
-    research_entry = fc.get("research")
-    if research_entry and research_entry.get("status") == "completed":
-        return research_entry
-
-    # 2. If already in flight, return running status
-    with _research_lock:
-        if valid_id in _in_flight_research:
-            return {"status": "running", "query": _in_flight_research[valid_id]}
-
-        # 3. Construct intelligent question from title and claims
-        claims = [c.get("claim") for c in fc.get("claim_matrix", []) if c.get("claim")]
-        if claims:
-            question = f"What is the latest verified evidence, truth status, and expert consensus regarding: {title}? Specific claims: {'; '.join(claims[:3])}"
-        else:
-            question = f"What is the latest verified context, background facts, and timeline regarding: {title}?"
-
-        _in_flight_research[valid_id] = question
-
-    # Mark as running in DB
-    try:
-        with get_db() as cur:
-            cur.execute("""
-                UPDATE articles
-                SET fact_check_cache = jsonb_set(
-                    COALESCE(fact_check_cache, '{}'::jsonb),
-                    '{research}',
-                    %s::jsonb
-                )
-                WHERE id = %s;
-            """, (json.dumps({"status": "running", "query": question}), valid_id))
-    except Exception:
-        pass
-
-    background_tasks.add_task(_run_article_research_worker, valid_id, question)
-    return {"status": "running", "query": question}
 
 
 @router.post("/api/articles/{article_id}/ask")
