@@ -181,12 +181,14 @@ def log_tavily_call(
     result_count: int,
     cluster_id: Optional[str] = None,
     cache_hit: bool = False,
-    is_mock: Optional[bool] = None
+    is_mock: Optional[bool] = None,
+    detail: Optional[str] = None
 ):
     """
     Logs every Tavily operation into the in-memory telemetry buffer and 
     attempts persistent logging to PostgreSQL if the database is accessible.
     Tracks whether a call was executed in mock mode vs. live production API.
+    Logs detail (query, url, or target domain) for live auditing & terminal radar.
     """
     mock_flag = TAVILY_MOCK if is_mock is None else bool(is_mock)
     effective_hash = f"mock_{params_hash}" if (mock_flag and not str(params_hash).startswith("mock_")) else params_hash
@@ -201,6 +203,7 @@ def log_tavily_call(
         "cluster_id": cluster_id,
         "cache_hit": cache_hit,
         "is_mock": mock_flag,
+        "detail": detail,
         "timestamp": time.time()
     }
     with _lock:
@@ -212,26 +215,35 @@ def log_tavily_call(
     if mock_flag and os.getenv("TAVILY_MOCK", "0").lower() not in ("1", "true"):
         return
 
-    row = (endpoint, purpose, effective_hash, credits_est, latency_ms, result_count, cluster_id, cache_hit)
+    row = (endpoint, purpose, effective_hash, credits_est, latency_ms, result_count, cluster_id, cache_hit, detail)
     try:
         from db import pool
         with pool.connection(timeout=0.3) as conn:
             with conn.cursor() as cur:
                 try:
-                    # key_id lets the credit budget count spend per API key
+                    # Preferred: schema with detail and key_id columns
                     cur.execute("""
                         INSERT INTO tavily_calls
-                            (endpoint, purpose, params_hash, credits_est, latency_ms, result_count, cluster_id, cache_hit, key_id)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
+                            (endpoint, purpose, params_hash, credits_est, latency_ms, result_count, cluster_id, cache_hit, detail, key_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
                     """, row + (None if cache_hit else active_key_id(),))
                 except Exception:
-                    # Older databases without the key_id column
                     conn.rollback()
-                    cur.execute("""
-                        INSERT INTO tavily_calls
-                            (endpoint, purpose, params_hash, credits_est, latency_ms, result_count, cluster_id, cache_hit)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
-                    """, row)
+                    try:
+                        # Fallback 1: schema with detail but without key_id
+                        cur.execute("""
+                            INSERT INTO tavily_calls
+                                (endpoint, purpose, params_hash, credits_est, latency_ms, result_count, cluster_id, cache_hit, detail)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
+                        """, row)
+                    except Exception:
+                        # Fallback 2: older schema without detail
+                        conn.rollback()
+                        cur.execute("""
+                            INSERT INTO tavily_calls
+                                (endpoint, purpose, params_hash, credits_est, latency_ms, result_count, cluster_id, cache_hit)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+                        """, row[:8])
             conn.commit()
     except Exception:
         # DB connection may not be up during CLI operations or tests; in-memory buffer handles it
@@ -404,12 +416,12 @@ def search_news(
 
     cached = _cache_get(params_key)
     if cached is not None:
-        log_tavily_call("search", purpose, params_hash, 0.0, 0, len(cached), cluster_id, cache_hit=True)
+        log_tavily_call("search", purpose, params_hash, 0.0, 0, len(cached), cluster_id, cache_hit=True, detail=topic)
         return cached
 
     if TAVILY_MOCK:
         mock_results = _load_mock_search_results(topic)
-        log_tavily_call("search", purpose, params_hash, 1.0, 15, len(mock_results), cluster_id, cache_hit=False, is_mock=True)
+        log_tavily_call("search", purpose, params_hash, 1.0, 15, len(mock_results), cluster_id, cache_hit=False, is_mock=True, detail=topic)
         return mock_results
 
     client = get_tavily_client()
@@ -448,13 +460,13 @@ def search_news(
         latency = int((time.perf_counter() - t0) * 1000)
         actual_credits = _extract_usage_credits(response, est_credits)
 
-        log_tavily_call("search", purpose, params_hash, actual_credits, latency, len(results), cluster_id, cache_hit=False, is_mock=False)
+        log_tavily_call("search", purpose, params_hash, actual_credits, latency, len(results), cluster_id, cache_hit=False, is_mock=False, detail=topic)
         _cache_set(params_key, results)
         return results
     except Exception as e:
         latency = int((time.perf_counter() - t0) * 1000)
         logger.error("[Tavily] search_news error for '%s': %s", topic, e)
-        log_tavily_call("search", purpose, params_hash, 0.0, latency, 0, cluster_id, cache_hit=False, is_mock=False)
+        log_tavily_call("search", purpose, params_hash, 0.0, latency, 0, cluster_id, cache_hit=False, is_mock=False, detail=topic)
         return []
 
 
@@ -489,14 +501,16 @@ def tavily_extract(
     }, sort_keys=True)
     params_hash = hashlib.sha1(params_key.encode("utf-8")).hexdigest()[:16]
 
+    extract_detail = ", ".join(url_list[:3]) if len(url_list) > 1 else (url_list[0] if url_list else None)
+
     cached = _cache_get(params_key)
     if cached is not None:
-        log_tavily_call("extract", purpose, params_hash, 0.0, 0, len(cached.get("results", [])), cluster_id, cache_hit=True)
+        log_tavily_call("extract", purpose, params_hash, 0.0, 0, len(cached.get("results", [])), cluster_id, cache_hit=True, detail=extract_detail)
         return cached
 
     if TAVILY_MOCK:
         mock_data = _load_mock_extract(url_list)
-        log_tavily_call("extract", purpose, params_hash, 1.0, 20, len(mock_data.get("results", [])), cluster_id, cache_hit=False, is_mock=True)
+        log_tavily_call("extract", purpose, params_hash, 1.0, 20, len(mock_data.get("results", [])), cluster_id, cache_hit=False, is_mock=True, detail=extract_detail)
         return mock_data
 
     client = get_tavily_client()
@@ -525,13 +539,13 @@ def tavily_extract(
         results = response.get("results", [])
         actual_credits = _extract_usage_credits(response, est_credits)
 
-        log_tavily_call("extract", purpose, params_hash, actual_credits, latency, len(results), cluster_id, cache_hit=False, is_mock=False)
+        log_tavily_call("extract", purpose, params_hash, actual_credits, latency, len(results), cluster_id, cache_hit=False, is_mock=False, detail=extract_detail)
         _cache_set(params_key, response)
         return response
     except Exception as e:
         latency = int((time.perf_counter() - t0) * 1000)
         logger.error("[Tavily] extract error for %d URLs: %s", len(url_list), e)
-        log_tavily_call("extract", purpose, params_hash, 0.0, latency, 0, cluster_id, cache_hit=False, is_mock=False)
+        log_tavily_call("extract", purpose, params_hash, 0.0, latency, 0, cluster_id, cache_hit=False, is_mock=False, detail=extract_detail)
         return {"results": [], "failed_results": [{"url": u, "error": str(e)} for u in url_list]}
 
 
@@ -546,7 +560,8 @@ def tavily_map(
     limit: int = 100,
     instructions: Optional[str] = None,
     timeout: float = 30.0,
-    purpose: str = "site_watch"
+    purpose: str = "site_watch",
+    detail: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Maps the complete URL hierarchy of a site or corporate newsroom without requiring an RSS feed.
@@ -562,14 +577,16 @@ def tavily_map(
     }, sort_keys=True)
     params_hash = hashlib.sha1(params_key.encode("utf-8")).hexdigest()[:16]
 
+    map_detail = detail or url
+
     cached = _cache_get(params_key)
     if cached is not None:
-        log_tavily_call("map", purpose, params_hash, 0.0, 0, len(cached.get("results", [])), cache_hit=True)
+        log_tavily_call("map", purpose, params_hash, 0.0, 0, len(cached.get("results", [])), cache_hit=True, detail=map_detail)
         return cached
 
     if TAVILY_MOCK:
         mock_data = _load_mock_map(url)
-        log_tavily_call("map", purpose, params_hash, 1.0, 25, len(mock_data.get("results", [])), cache_hit=False, is_mock=True)
+        log_tavily_call("map", purpose, params_hash, 1.0, 25, len(mock_data.get("results", [])), cache_hit=False, is_mock=True, detail=map_detail)
         return mock_data
 
     client = get_tavily_client()
@@ -599,13 +616,13 @@ def tavily_map(
         est_credits = max(1.0, (len(results) or limit) / 10.0)
         actual_credits = _extract_usage_credits(response, est_credits)
 
-        log_tavily_call("map", purpose, params_hash, actual_credits, latency, len(results), cache_hit=False, is_mock=False)
+        log_tavily_call("map", purpose, params_hash, actual_credits, latency, len(results), cache_hit=False, is_mock=False, detail=map_detail)
         _cache_set(params_key, response)
         return response
     except Exception as e:
         latency = int((time.perf_counter() - t0) * 1000)
         logger.error("[Tavily] map error for '%s': %s", url, e)
-        log_tavily_call("map", purpose, params_hash, 0.0, latency, 0, cache_hit=False, is_mock=False)
+        log_tavily_call("map", purpose, params_hash, 0.0, latency, 0, cache_hit=False, is_mock=False, detail=map_detail)
         return {"results": []}
 
 
@@ -621,7 +638,8 @@ def tavily_crawl(
     limit: int = 50,
     extract_depth: str = "basic",
     timeout: float = 40.0,
-    purpose: str = "targeted_crawl"
+    purpose: str = "targeted_crawl",
+    detail: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Crawls and extracts full content from targeted sections in a single unified operation.
@@ -637,15 +655,16 @@ def tavily_crawl(
         "extract_depth": extract_depth
     }, sort_keys=True)
     params_hash = hashlib.sha1(params_key.encode("utf-8")).hexdigest()[:16]
+    crawl_detail = detail or url
 
     cached = _cache_get(params_key)
     if cached is not None:
-        log_tavily_call("crawl", purpose, params_hash, 0.0, 0, len(cached.get("results", [])), cache_hit=True)
+        log_tavily_call("crawl", purpose, params_hash, 0.0, 0, len(cached.get("results", [])), cache_hit=True, detail=crawl_detail)
         return cached
 
     if TAVILY_MOCK:
         mock_data = _load_mock_crawl(url)
-        log_tavily_call("crawl", purpose, params_hash, 2.0, 30, len(mock_data.get("results", [])), cache_hit=False, is_mock=True)
+        log_tavily_call("crawl", purpose, params_hash, 2.0, 30, len(mock_data.get("results", [])), cache_hit=False, is_mock=True, detail=crawl_detail)
         return mock_data
 
     client = get_tavily_client()
@@ -675,13 +694,13 @@ def tavily_crawl(
         est_credits = max(2.0, len(results) / 5.0)
         actual_credits = _extract_usage_credits(response, est_credits)
 
-        log_tavily_call("crawl", purpose, params_hash, actual_credits, latency, len(results), cache_hit=False, is_mock=False)
+        log_tavily_call("crawl", purpose, params_hash, actual_credits, latency, len(results), cache_hit=False, is_mock=False, detail=crawl_detail)
         _cache_set(params_key, response)
         return response
     except Exception as e:
         latency = int((time.perf_counter() - t0) * 1000)
         logger.error("[Tavily] crawl error for '%s': %s", url, e)
-        log_tavily_call("crawl", purpose, params_hash, 0.0, latency, 0, cache_hit=False, is_mock=False)
+        log_tavily_call("crawl", purpose, params_hash, 0.0, latency, 0, cache_hit=False, is_mock=False, detail=crawl_detail)
         return {"results": []}
 
 
@@ -710,7 +729,8 @@ def tavily_research(
     model: str = "mini",
     output_schema: Optional[Dict[str, Any]] = None,
     timeout: Optional[float] = 45.0,
-    purpose: str = "deep_check"
+    purpose: str = "deep_check",
+    detail: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Executes a structured research task producing an exhaustive multi-source intelligence report.
@@ -723,15 +743,16 @@ def tavily_research(
         "has_schema": bool(output_schema)
     }, sort_keys=True)
     params_hash = hashlib.sha1(params_key.encode("utf-8")).hexdigest()[:16]
+    res_detail = detail or input_query
 
     cached = _cache_get(params_key)
     if cached is not None:
-        log_tavily_call("research", purpose, params_hash, 0.0, 0, 1, cache_hit=True)
+        log_tavily_call("research", purpose, params_hash, 0.0, 0, 1, cache_hit=True, detail=res_detail)
         return cached
 
     if TAVILY_MOCK:
         mock_data = _load_mock_research(input_query)
-        log_tavily_call("research", purpose, params_hash, 25.0, 50, 1, cache_hit=False, is_mock=True)
+        log_tavily_call("research", purpose, params_hash, 25.0, 50, 1, cache_hit=False, is_mock=True, detail=res_detail)
         return mock_data
 
     client = get_tavily_client()
@@ -771,13 +792,13 @@ def tavily_research(
 
         latency = int((time.perf_counter() - t0) * 1000)
         actual_credits = _extract_usage_credits(res_dict, est_credits)
-        log_tavily_call("research", purpose, params_hash, actual_credits, latency, 1, cache_hit=False, is_mock=False)
+        log_tavily_call("research", purpose, params_hash, actual_credits, latency, 1, cache_hit=False, is_mock=False, detail=res_detail)
         _cache_set(params_key, res_dict)
         return res_dict
     except Exception as e:
         latency = int((time.perf_counter() - t0) * 1000)
         logger.error("[Tavily] research error for '%s': %s", input_query[:40], e)
-        log_tavily_call("research", purpose, params_hash, 0.0, latency, 0, cache_hit=False, is_mock=False)
+        log_tavily_call("research", purpose, params_hash, 0.0, latency, 0, cache_hit=False, is_mock=False, detail=res_detail)
         return {"report": f"Research failed: {e}", "sources": []}
 
 

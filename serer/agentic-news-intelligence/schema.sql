@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS tavily_calls (
     result_count INT DEFAULT 0,
     cluster_id UUID,
     cache_hit BOOLEAN DEFAULT FALSE,
+    detail TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_tavily_calls_created ON tavily_calls (created_at DESC);
@@ -139,8 +140,20 @@ CREATE TABLE IF NOT EXISTS watched_sites (
     select_paths TEXT[] DEFAULT ARRAY['/news/.*', '/press/.*', '/blog/.*'],
     last_mapped_at TIMESTAMP WITH TIME ZONE,
     is_active BOOLEAN DEFAULT TRUE,
+    status VARCHAR(20) DEFAULT 'pending',
+    article_count INT DEFAULT 0,
+    last_checked_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS user_watched_sites (
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    site_id UUID REFERENCES watched_sites(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (user_id, site_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_watched_sites_user ON user_watched_sites (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_watched_sites_site ON user_watched_sites (site_id);
 
 CREATE TABLE IF NOT EXISTS site_discovered_urls (
     id BIGSERIAL PRIMARY KEY,

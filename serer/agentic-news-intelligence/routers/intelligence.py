@@ -2,9 +2,10 @@ import uuid
 import json
 import logging
 import asyncio
+import threading
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Tuple
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from fastapi.responses import StreamingResponse
 
 from db import get_db
@@ -163,6 +164,8 @@ class InspectionBroadcaster:
 
 _in_flight_broadcasters: Dict[str, InspectionBroadcaster] = {}
 _broadcaster_lock = asyncio.Lock()
+_in_flight_research: Dict[str, str] = {}
+_research_lock = threading.Lock()
 
 
 def map_evidence_to_fact_check_result(
@@ -379,6 +382,136 @@ async def deep_inspect_article(article_id: str):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
     )
+
+
+def _run_article_research_worker(article_id: str, question: str):
+    from tavily_service import tavily_research
+    try:
+        logger.info("[Article Research] Running Tavily Research for article %s: %s", article_id, question[:60])
+        res = tavily_research(
+            input_query=question,
+            model="mini",
+            purpose="deep_inspect_research",
+            detail=question
+        )
+        with get_db() as cur:
+            cur.execute("""
+                UPDATE articles
+                SET fact_check_cache = jsonb_set(
+                    COALESCE(fact_check_cache, '{}'::jsonb),
+                    '{research}',
+                    %s::jsonb
+                )
+                WHERE id = %s;
+            """, (json.dumps({
+                "status": "completed",
+                "query": question,
+                "research": res
+            }), article_id))
+        logger.info("[Article Research] Research completed and cached for %s", article_id)
+    except Exception as e:
+        logger.exception("[Article Research] Failed research for article %s: %s", article_id, e)
+        try:
+            with get_db() as cur:
+                cur.execute("""
+                    UPDATE articles
+                    SET fact_check_cache = jsonb_set(
+                        COALESCE(fact_check_cache, '{}'::jsonb),
+                        '{research}',
+                        %s::jsonb
+                    )
+                    WHERE id = %s;
+                """, (json.dumps({
+                    "status": "failed",
+                    "query": question,
+                    "error": str(e)
+                }), article_id))
+        except Exception:
+            pass
+    finally:
+        with _research_lock:
+            _in_flight_research.pop(article_id, None)
+
+
+@router.get("/api/articles/{article_id}/deep-inspect/research")
+def get_article_research(article_id: str):
+    """
+    Returns cached or active Tavily Research state for an article.
+    Matches Contract B: returns {"status": "none" | "running" | "completed" | "failed", ...}
+    """
+    valid_id = validate_uuid(article_id, "article_id")
+    with get_db() as cur:
+        cur.execute("SELECT fact_check_cache FROM articles WHERE id = %s;", (valid_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Article not found")
+
+    fc = row[0]
+    if fc:
+        cache_dict = fc if isinstance(fc, dict) else json.loads(fc)
+        research_entry = cache_dict.get("research")
+        if research_entry:
+            return research_entry
+
+    with _research_lock:
+        if valid_id in _in_flight_research:
+            return {"status": "running", "query": _in_flight_research[valid_id]}
+
+    return {"status": "none"}
+
+
+@router.post("/api/articles/{article_id}/deep-inspect/research")
+def trigger_article_research(article_id: str, background_tasks: BackgroundTasks):
+    """
+    Triggers an article-bound Tavily Research deep dive (Contract B).
+    Server constructs question automatically from article title and verified claims.
+    """
+    valid_id = validate_uuid(article_id, "article_id")
+    with get_db() as cur:
+        cur.execute("SELECT title, tldr, fact_check_cache FROM articles WHERE id = %s;", (valid_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Article not found")
+
+    title, tldr, fc_raw = row[0], row[1] or "", row[2]
+    fc = (fc_raw if isinstance(fc_raw, dict) else json.loads(fc_raw)) if fc_raw else {}
+
+    # 1. If already completed, return cached immediately
+    research_entry = fc.get("research")
+    if research_entry and research_entry.get("status") == "completed":
+        return research_entry
+
+    # 2. If already in flight, return running status
+    with _research_lock:
+        if valid_id in _in_flight_research:
+            return {"status": "running", "query": _in_flight_research[valid_id]}
+
+        # 3. Construct intelligent question from title and claims
+        claims = [c.get("claim") for c in fc.get("claim_matrix", []) if c.get("claim")]
+        if claims:
+            question = f"What is the latest verified evidence, truth status, and expert consensus regarding: {title}? Specific claims: {'; '.join(claims[:3])}"
+        else:
+            question = f"What is the latest verified context, background facts, and timeline regarding: {title}?"
+
+        _in_flight_research[valid_id] = question
+
+    # Mark as running in DB
+    try:
+        with get_db() as cur:
+            cur.execute("""
+                UPDATE articles
+                SET fact_check_cache = jsonb_set(
+                    COALESCE(fact_check_cache, '{}'::jsonb),
+                    '{research}',
+                    %s::jsonb
+                )
+                WHERE id = %s;
+            """, (json.dumps({"status": "running", "query": question}), valid_id))
+    except Exception:
+        pass
+
+    background_tasks.add_task(_run_article_research_worker, valid_id, question)
+    return {"status": "running", "query": question}
 
 
 @router.post("/api/articles/{article_id}/ask")
@@ -1180,16 +1313,307 @@ def get_watched_sites():
 
 @router.post("/api/tavily/site-watch")
 def trigger_site_watch(req: Optional[SiteWatchTriggerRequest] = None):
-    """Triggers an on-demand Tavily Map + Extract monitoring cycle across RSS-less corporate newsrooms."""
-    from site_watcher import seed_watched_sites, run_site_watch_cycle
-    seed_watched_sites()
-    max_ext = req.max_extract_per_site if req else 2
+    """Triggers an on-demand Tavily Map + Extract monitoring cycle across followed newsrooms."""
+    from site_watcher import run_site_watch_cycle
+    max_ext = req.max_extract_per_site if req else 5
     discovered, ingested = run_site_watch_cycle(max_extract_per_site=max_ext)
     return {
         "status": "completed",
         "newly_discovered_urls": discovered,
         "newly_ingested_articles": ingested
     }
+
+
+@router.get("/api/tavily/calls")
+def get_recent_tavily_calls(
+    after_id: Optional[int] = Query(None, description="Fetch calls with ID strictly greater than after_id"),
+    limit: int = Query(50, ge=1, le=200, description="Maximum number of calls to return")
+):
+    """
+    Live call feed for the in-app Tavily terminal and split-screen pitch video watcher.
+    Reads directly from PostgreSQL tavily_calls table (capturing calls across all processes).
+    Newest last (ascending by ID). Never returns mock rows.
+    """
+    calls = []
+    latest_id = after_id or 0
+    try:
+        with get_db() as cur:
+            if after_id is not None:
+                cur.execute("""
+                    SELECT id, endpoint, purpose, detail, result_count, latency_ms, credits_est, cache_hit, created_at
+                    FROM tavily_calls
+                    WHERE (params_hash NOT LIKE 'mock_%%' AND params_hash != 'mock')
+                      AND id > %s
+                    ORDER BY id ASC
+                    LIMIT %s;
+                """, (after_id, limit))
+            else:
+                cur.execute("""
+                    SELECT id, endpoint, purpose, detail, result_count, latency_ms, credits_est, cache_hit, created_at
+                    FROM (
+                        SELECT id, endpoint, purpose, detail, result_count, latency_ms, credits_est, cache_hit, created_at
+                        FROM tavily_calls
+                        WHERE (params_hash NOT LIKE 'mock_%%' AND params_hash != 'mock')
+                        ORDER BY id DESC
+                        LIMIT %s
+                    ) sub
+                    ORDER BY id ASC;
+                """, (limit,))
+
+            rows = cur.fetchall()
+            for r in rows:
+                calls.append({
+                    "id": r[0],
+                    "endpoint": r[1],
+                    "purpose": r[2],
+                    "detail": r[3],
+                    "result_count": r[4] or 0,
+                    "latency_ms": r[5] or 0,
+                    "credits_est": float(r[6]) if r[6] is not None else 1.0,
+                    "cache_hit": bool(r[7]),
+                    "created_at": r[8].isoformat() if hasattr(r[8], "isoformat") else str(r[8])
+                })
+
+            if calls:
+                latest_id = calls[-1]["id"]
+            else:
+                cur.execute("SELECT COALESCE(MAX(id), 0) FROM tavily_calls WHERE (params_hash NOT LIKE 'mock_%%' AND params_hash != 'mock');")
+                max_row = cur.fetchone()
+                latest_id = max_row[0] if max_row else (after_id or 0)
+    except Exception as e:
+        logger.error("[Tavily] Error fetching calls feed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
+
+    return {
+        "calls": calls,
+        "latest_id": latest_id
+    }
+
+
+def _normalize_research_sources(raw_sources: Any) -> List[Dict[str, str]]:
+    sources = []
+    if isinstance(raw_sources, list):
+        for s in raw_sources:
+            if isinstance(s, dict):
+                url = s.get("url") or ""
+                title = s.get("title") or url
+                if url:
+                    sources.append({"title": title, "url": url})
+            elif isinstance(s, str) and s:
+                sources.append({"title": s, "url": s})
+    return sources
+
+
+@router.post("/api/articles/{article_id}/deep-inspect/research")
+def execute_article_research(article_id: str):
+    """
+    On-demand Tavily Deep Research bound to an article.
+    Server formulates the investigative question from title + claims.
+    Results are cached in articles.fact_check_cache['research'].
+    """
+    valid_id = validate_uuid(article_id, "article_id")
+    with get_db() as cur:
+        cur.execute("""
+            SELECT id, title, tldr, clean_text, fact_check_cache
+            FROM articles WHERE id = %s;
+        """, (valid_id,))
+        row = cur.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    title, tldr, clean_text, fact_check_cache = row[1], row[2], row[3], row[4]
+    fc = fact_check_cache if isinstance(fact_check_cache, dict) else (json.loads(fact_check_cache) if fact_check_cache else {})
+    existing_research = fc.get("research") if isinstance(fc, dict) else None
+
+    # Cached hit: return immediately with 0 credit spend
+    if existing_research and existing_research.get("status") == "completed":
+        return {
+            "status": "completed",
+            "report": existing_research.get("report"),
+            "sources": existing_research.get("sources") or [],
+            "cached": True,
+            "credits": 0.0
+        }
+
+    # Formulate question from title and core claims
+    question = extract_claim_query_single(title or "", tldr or "")
+    if len(question) < 10:
+        question = f"Verify recent developments and claims: {title}"
+
+    try:
+        res = tavily_research(
+            input_query=question,
+            model="mini",
+            purpose="deep_inspect_research",
+            detail=question,
+            timeout=30.0
+        )
+    except Exception as e:
+        logger.error("[Deep Research] Error running research for article %s: %s", valid_id, e)
+        return {
+            "status": "failed",
+            "report": None,
+            "sources": [],
+            "cached": False,
+            "credits": None
+        }
+
+    report = res.get("report") or res.get("content")
+    raw_sources = res.get("sources") or []
+    norm_sources = _normalize_research_sources(raw_sources)
+    req_id = res.get("request_id")
+    status = str(res.get("status", "")).lower()
+
+    if report and status in ("completed", "complete", ""):
+        credits_spent = float(res.get("usage", {}).get("credits", 25.0) if isinstance(res.get("usage"), dict) else 25.0)
+        research_entry = {
+            "status": "completed",
+            "report": report,
+            "sources": norm_sources,
+            "cached": False,
+            "credits": credits_spent,
+            "question": question,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        fc["research"] = research_entry
+        with get_db() as cur:
+            cur.execute("""
+                UPDATE articles
+                SET fact_check_cache = %s::jsonb
+                WHERE id = %s;
+            """, (json.dumps(fc), valid_id))
+
+        return {
+            "status": "completed",
+            "report": report,
+            "sources": norm_sources,
+            "cached": False,
+            "credits": credits_spent
+        }
+    elif req_id and not report:
+        # Asynchronous job still running
+        research_entry = {
+            "status": "running",
+            "request_id": req_id,
+            "question": question,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        fc["research"] = research_entry
+        with get_db() as cur:
+            cur.execute("""
+                UPDATE articles
+                SET fact_check_cache = %s::jsonb
+                WHERE id = %s;
+            """, (json.dumps(fc), valid_id))
+
+        return {
+            "status": "running",
+            "report": None,
+            "sources": [],
+            "cached": False,
+            "credits": None
+        }
+    else:
+        return {
+            "status": "failed",
+            "report": None,
+            "sources": [],
+            "cached": False,
+            "credits": None
+        }
+
+
+@router.get("/api/articles/{article_id}/deep-inspect/research")
+def get_article_research(article_id: str):
+    """
+    Polls or retrieves cached Tavily Deep Research for an article.
+    """
+    valid_id = validate_uuid(article_id, "article_id")
+    with get_db() as cur:
+        cur.execute("SELECT fact_check_cache FROM articles WHERE id = %s;", (valid_id,))
+        row = cur.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    fact_check_cache = row[0]
+    fc = fact_check_cache if isinstance(fact_check_cache, dict) else (json.loads(fact_check_cache) if fact_check_cache else {})
+    research_entry = fc.get("research") if isinstance(fc, dict) else None
+
+    if not research_entry:
+        return {
+            "status": "none",
+            "report": None,
+            "sources": [],
+            "cached": False,
+            "credits": None
+        }
+
+    status = str(research_entry.get("status", "")).lower()
+
+    if status == "completed":
+        return {
+            "status": "completed",
+            "report": research_entry.get("report"),
+            "sources": research_entry.get("sources") or [],
+            "cached": True,
+            "credits": research_entry.get("credits")
+        }
+    elif status == "running":
+        req_id = research_entry.get("request_id")
+        if req_id:
+            try:
+                polled = get_research_result(req_id)
+                polled_status = str(polled.get("status", "")).lower()
+                report = polled.get("report") or polled.get("content")
+                if report or polled_status in ("completed", "complete"):
+                    norm_sources = _normalize_research_sources(polled.get("sources") or [])
+                    credits_spent = float(polled.get("usage", {}).get("credits", 25.0) if isinstance(polled.get("usage"), dict) else 25.0)
+                    research_entry["status"] = "completed"
+                    research_entry["report"] = report
+                    research_entry["sources"] = norm_sources
+                    research_entry["credits"] = credits_spent
+                    fc["research"] = research_entry
+                    with get_db() as cur:
+                        cur.execute("UPDATE articles SET fact_check_cache = %s::jsonb WHERE id = %s;", (json.dumps(fc), valid_id))
+                    return {
+                        "status": "completed",
+                        "report": report,
+                        "sources": norm_sources,
+                        "cached": False,
+                        "credits": credits_spent
+                    }
+                elif polled_status in ("failed", "error"):
+                    research_entry["status"] = "failed"
+                    fc["research"] = research_entry
+                    with get_db() as cur:
+                        cur.execute("UPDATE articles SET fact_check_cache = %s::jsonb WHERE id = %s;", (json.dumps(fc), valid_id))
+                    return {
+                        "status": "failed",
+                        "report": None,
+                        "sources": [],
+                        "cached": False,
+                        "credits": None
+                    }
+            except Exception as e:
+                logger.warning("[Deep Research] Error polling research %s: %s", req_id, e)
+
+        return {
+            "status": "running",
+            "report": None,
+            "sources": [],
+            "cached": False,
+            "credits": None
+        }
+    else:
+        return {
+            "status": "failed",
+            "report": None,
+            "sources": [],
+            "cached": False,
+            "credits": None
+        }
 
 
 @router.post("/api/tavily/research")

@@ -107,39 +107,34 @@ def _infer_article_date(url: str, raw_text: str) -> str:
 
 
 def seed_watched_sites():
-    """Seeds default monitored newsrooms into the database if not present."""
-    try:
-        from db import pool
-        with pool.connection(timeout=0.3) as conn:
-            with conn.cursor() as cur:
-                for s in SEED_WATCHED_SITES:
-                    cur.execute("""
-                        INSERT INTO watched_sites (site_name, root_url, select_paths)
-                        VALUES (%s, %s, %s)
-                        ON CONFLICT (root_url) DO NOTHING;
-                    """, (s["site_name"], s["root_url"], s["select_paths"]))
-            conn.commit()
-    except Exception as e:
-        logger.info("Watched sites DB note (offline/initializing): %s", e)
+    """No-op: Sites are monitored strictly on-demand when followed by users."""
+    pass
 
 
 def get_active_sites() -> List[Dict[str, Any]]:
-    """Seeds defaults and fetches active sites to monitor from PostgreSQL, with seed fallback."""
-    seed_watched_sites()
+    """
+    Fetches active sites to monitor that are followed by at least one user.
+    Never returns hardcoded seeds.
+    """
     try:
         from db import pool
         with pool.connection(timeout=0.3) as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT id, site_name, root_url, select_paths FROM watched_sites WHERE is_active = TRUE;")
+                cur.execute("""
+                    SELECT DISTINCT ws.id, ws.site_name, ws.root_url, ws.select_paths
+                    FROM watched_sites ws
+                    JOIN user_watched_sites uws ON ws.id = uws.site_id
+                    WHERE ws.is_active = TRUE;
+                """)
                 rows = cur.fetchall()
                 if rows:
                     return [
                         {"id": str(r[0]), "site_name": r[1], "root_url": r[2], "select_paths": r[3]}
                         for r in rows
                     ]
-    except Exception:
-        pass
-    return SEED_WATCHED_SITES
+    except Exception as e:
+        logger.warning("[Site Watcher] Failed to query active followed sites: %s", e)
+    return []
 
 
 def run_site_watch_cycle(max_extract_per_site: int = 3) -> tuple[int, int]:
@@ -152,12 +147,31 @@ def run_site_watch_cycle(max_extract_per_site: int = 3) -> tuple[int, int]:
       5. Infers publication dates, cleans Markdown, and ingests into the pipeline.
     Returns (total_discovered, total_ingested).
     """
+    try:
+        import query_scheduler
+        from db import get_db
+        from tavily_service import configured_keys
+        with get_db() as cur:
+            credit_status = query_scheduler.key_credit_status(cur, configured_keys())
+            remaining = query_scheduler.total_remaining(credit_status)
+        reserve = int(os.getenv("TAVILY_CREDIT_RESERVE", "150"))
+        allowed = query_scheduler.affordable_count(remaining, reserve, cost_per_query=2)
+        if allowed is not None and allowed <= 0:
+            logger.warning("[Site Watcher] Credit reserve reached (remaining=%s, reserve=%s); skipping site watch cycle.", remaining, reserve)
+            return 0, 0
+    except Exception as e:
+        logger.warning("[Site Watcher] Credit check note: %s", e)
+
     secret = os.getenv("INGESTION_SECRET")
     sites = get_active_sites()
+    if not sites:
+        logger.info("[Site Watcher] No user-followed sites to watch. Waiting...")
+        return 0, 0
+
     total_discovered = 0
     total_ingested = 0
 
-    logger.info("Starting Tavily Site Watch Cycle across %d sites...", len(sites))
+    logger.info("Starting Tavily Site Watch Cycle across %d user-followed sites...", len(sites))
 
     for site in sites:
         site_name = site["site_name"]
@@ -302,10 +316,9 @@ def main():
     parser = argparse.ArgumentParser(description="FeedProof RSS-less Site Watcher")
     parser.add_argument("--once", action="store_true", default=True, help="Run a single watch cycle and exit (default)")
     parser.add_argument("--loop", action="store_true", help="Run continuously in background")
-    parser.add_argument("--interval", type=int, default=14400, help="Loop interval in seconds (default: 14400s / 4 hours)")
+    parser.add_argument("--interval", type=int, default=86400, help="Loop interval in seconds (default: 86400s / 24 hours)")
     args = parser.parse_args()
 
-    seed_watched_sites()
     while True:
         run_site_watch_cycle()
         if not args.loop:

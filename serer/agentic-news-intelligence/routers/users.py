@@ -1,4 +1,7 @@
+import os
 import re
+import hashlib
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 import numpy as np
 import logging
@@ -7,9 +10,10 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from ai import ai_client, FAST_MODEL
 from db import get_db
 from embedder import get_embedder, similarity_thresholds
-from schemas import UserLoginRequest, UserPreferencesUpdate, UserInteractionRequest
+from schemas import UserLoginRequest, UserPreferencesUpdate, UserInteractionRequest, SiteFollowRequest, SiteOut
 from taxonomy import MACRO_CATEGORIES, clean_micro_tags
 from routers.deps import validate_uuid, parse_vector
+from url_utils import canonicalize_url, extract_domain
 
 router = APIRouter(tags=["Users & Personalization"])
 logger = logging.getLogger("users_router")
@@ -171,6 +175,19 @@ def get_personalized_feed_data(user_id: str, page: int = 1, page_size: int = 20)
         # Cold-start guardrail: If onboarding incomplete or preferred_macro_tags empty, return chronological fallback
         if not onboarding_done or not preferred_macros:
             cur.execute("""
+                SELECT ws.site_name, ws.root_url
+                FROM watched_sites ws
+                JOIN user_watched_sites uws ON ws.id = uws.site_id
+                WHERE uws.user_id = %s;
+            """, (valid_user_id,))
+            user_site_rows = cur.fetchall()
+            user_site_domains = [
+                (extract_domain(sroot), sname)
+                for sname, sroot in user_site_rows
+                if sroot
+            ]
+
+            cur.execute("""
                 SELECT id, source_feed, title, original_url, author, published_at, macro_tag, macro_tags, micro_tags, tldr, image_url, image_status
                 FROM articles a
                 WHERE a.is_processed = TRUE 
@@ -196,7 +213,11 @@ def get_personalized_feed_data(user_id: str, page: int = 1, page_size: int = 20)
                     "image_status": r[11] or ("resolved" if r[10] else "gradient_fallback"),
                     "personal_score": 50,
                     "is_liked": False,
-                    "is_disliked": False
+                    "is_disliked": False,
+                    "matched_sites": [
+                        sname for sdom, sname in user_site_domains
+                        if (sdom and sdom in (r[3] or "")) or sname == r[1]
+                    ]
                 }
                 for r in fallback_rows
             ]
@@ -235,11 +256,13 @@ def get_personalized_feed_data(user_id: str, page: int = 1, page_size: int = 20)
                 + (CASE WHEN cardinality(s.matched_follows) > 0
                          AND NOT (s.macro_tag = ANY(%(preferred_macros)s))
                         THEN %(follow_category_points)s ELSE 0 END)
+                + (CASE WHEN cardinality(s.matched_sites) > 0 THEN 25 ELSE 0 END)
             )::integer AS personal_score,
             s.is_liked,
             s.matched_follows,
             s.image_url,
-            s.image_status
+            s.image_status,
+            s.matched_sites
         FROM (
             SELECT
                 a.id, a.source_feed, a.title, a.original_url, a.author, a.published_at,
@@ -283,7 +306,17 @@ def get_personalized_feed_data(user_id: str, page: int = 1, page_size: int = 20)
                       AND uf.embedding IS NOT NULL
                       AND a.embedding IS NOT NULL
                       AND (a.embedding <=> uf.embedding) <= %(follow_semantic_max_dist)s
-                ) AS matched_follows
+                ) AS matched_follows,
+                ARRAY(
+                    SELECT ws.site_name
+                    FROM watched_sites ws
+                    JOIN user_watched_sites uws ON ws.id = uws.site_id
+                    WHERE uws.user_id = %(user_id)s
+                      AND (
+                          a.source_feed = ws.site_name
+                          OR POSITION(replace(replace(replace(ws.root_url, 'https://', ''), 'http://', ''), 'www.', '') IN a.original_url) > 0
+                      )
+                ) AS matched_sites
             FROM articles a
             WHERE a.is_processed = TRUE
               AND a.macro_tag IS NOT NULL
@@ -299,6 +332,7 @@ def get_personalized_feed_data(user_id: str, page: int = 1, page_size: int = 20)
         WHERE s.macro_tag = ANY(%(preferred_macros)s)
            OR s.macro_tags && %(preferred_macros)s::text[]
            OR cardinality(s.matched_follows) > 0
+           OR cardinality(s.matched_sites) > 0
         ORDER BY personal_score DESC, s.published_at DESC
         LIMIT %(limit)s OFFSET %(offset)s;
         """
@@ -331,10 +365,12 @@ def get_personalized_feed_data(user_id: str, page: int = 1, page_size: int = 20)
                 "is_disliked": False,
                 "matched_follows": list(r[12] or []),
                 "image_url": r[13],
-                "image_status": r[14] or ("resolved" if r[13] else "gradient_fallback")
+                "image_status": r[14] or ("resolved" if r[13] else "gradient_fallback"),
+                "matched_sites": list(r[15] or [])
             }
             for r in ranked_rows
         ]
+
 
         return {
             "user_id": valid_user_id,
@@ -618,3 +654,260 @@ def get_all_users():
             {"id": str(r[0]), "username": r[1], "avatar_url": r[2], "created_at": r[3]}
             for r in rows
         ]
+
+
+def _process_site_follow(site_id: str, canonical_url: str, site_name: str) -> None:
+    """
+    Background worker for on-demand site follow:
+      1. Checks TAVILY_CREDIT_RESERVE to protect live credits.
+      2. Runs tavily_map(url=canonical_url, purpose="site_follow_map", detail=canonical_url).
+      3. Saves discovered URLs to site_discovered_urls.
+      4. If discovered < 3: sets status = 'no_articles'.
+      5. Else: sets status = 'crawling', runs tavily_crawl(url=canonical_url, limit=5, purpose="site_follow_crawl", detail=canonical_url).
+         Cleans each article with clean_article_markdown, embeds, inserts into articles.
+         Sets status = 'ready', updates article_count.
+    """
+    from tavily_service import tavily_map, tavily_crawl
+    from content_cleaner import clean_article_markdown
+    from embedder import get_embedder
+    import query_scheduler
+
+    logger.info("[Site Follow] Starting crawl/map for site %s (%s)", site_name, canonical_url)
+    try:
+        # Check credit reserve
+        from tavily_service import configured_keys
+        with get_db() as cur:
+            credit_status = query_scheduler.key_credit_status(cur, configured_keys())
+            remaining = query_scheduler.total_remaining(credit_status)
+        reserve = int(os.getenv("TAVILY_CREDIT_RESERVE", "150"))
+        allowed = query_scheduler.affordable_count(remaining, reserve, cost_per_query=2)
+        if allowed is not None and allowed <= 0:
+            logger.warning("[Site Follow] Credit reserve reached; marking site %s as failed", site_id)
+            with get_db() as cur:
+                cur.execute("UPDATE watched_sites SET status = 'failed', last_checked_at = NOW() WHERE id = %s;", (site_id,))
+            return
+
+        # 1. Mapping
+        with get_db() as cur:
+            cur.execute("UPDATE watched_sites SET status = 'mapping' WHERE id = %s;", (site_id,))
+
+        map_resp = tavily_map(
+            url=canonical_url,
+            instructions="news articles, blog posts and press releases only",
+            limit=50,
+            purpose="site_follow_map",
+            detail=canonical_url
+        )
+        found_urls = map_resp.get("results", [])
+
+        clean_urls: List[str] = []
+        for u in found_urls:
+            c = canonicalize_url(u)
+            if c and c not in clean_urls:
+                clean_urls.append(c)
+
+        logger.info("[Site Follow: %s] Discovered %d URLs via Tavily Map", site_name, len(clean_urls))
+
+        with get_db() as cur:
+            for u in clean_urls:
+                cur.execute("""
+                    INSERT INTO site_discovered_urls (site_id, url_canonical, is_ingested)
+                    VALUES (%s, %s, FALSE)
+                    ON CONFLICT (site_id, url_canonical) DO NOTHING;
+                """, (site_id, u))
+            cur.execute("UPDATE watched_sites SET last_mapped_at = NOW() WHERE id = %s;", (site_id,))
+
+        if len(clean_urls) < 3:
+            logger.info("[Site Follow: %s] Fewer than 3 articles discovered (%d); marking no_articles", site_name, len(clean_urls))
+            with get_db() as cur:
+                cur.execute("UPDATE watched_sites SET status = 'no_articles', last_checked_at = NOW() WHERE id = %s;", (site_id,))
+            return
+
+        # 2. Crawling
+        with get_db() as cur:
+            cur.execute("UPDATE watched_sites SET status = 'crawling' WHERE id = %s;", (site_id,))
+
+        crawl_resp = tavily_crawl(
+            url=canonical_url,
+            instructions="recent news announcements, blog posts and press releases",
+            limit=5,
+            purpose="site_follow_crawl",
+            detail=canonical_url
+        )
+        crawled_results = crawl_resp.get("results", [])
+        logger.info("[Site Follow: %s] Crawled %d results via Tavily Crawl", site_name, len(crawled_results))
+
+        embedder = None
+        try:
+            embedder = get_embedder()
+        except Exception as e:
+            logger.warning("[Site Follow] Could not initialize embedder: %s", e)
+
+        ingested_count = 0
+        with get_db() as cur:
+            for r in crawled_results:
+                raw_url = r.get("url", "")
+                c_url = canonicalize_url(raw_url)
+                if not c_url:
+                    continue
+                title = (r.get("title") or f"Update from {site_name}").strip()
+                raw_content = r.get("raw_content", "") or ""
+                cleaned = clean_article_markdown(title, raw_content)
+                if not cleaned or len(cleaned) < 150:
+                    cleaned = raw_content[:2000].strip() if len(raw_content) >= 150 else ""
+                if not cleaned:
+                    continue
+
+                url_hash = hashlib.sha256(c_url.encode("utf-8")).hexdigest()
+                tldr = cleaned[:240].replace("\n", " ").strip()
+                if len(tldr) == 240:
+                    tldr += "..."
+
+                emb_vec_str = None
+                if embedder:
+                    try:
+                        emb = embedder.embed_text(f"{title} - {cleaned[:300]}")
+                        emb_vec_str = str(emb)
+                    except Exception as e:
+                        logger.warning("[Site Follow] Embedding failed for %s: %s", title[:30], e)
+
+                cur.execute("""
+                    INSERT INTO articles (
+                        url_hash, source_feed, title, original_url, author,
+                        published_at, clean_text, macro_tag, macro_tags, micro_tags,
+                        tldr, is_processed, embedding
+                    ) VALUES (
+                        %s, %s, %s, %s, %s,
+                        NOW(), %s, 'Tech', ARRAY['Tech'], ARRAY['newsroom'],
+                        %s, TRUE, %s::vector
+                    )
+                    ON CONFLICT (url_hash) DO UPDATE SET
+                        clean_text = EXCLUDED.clean_text,
+                        is_processed = TRUE
+                    RETURNING id;
+                """, (
+                    url_hash, site_name, title, c_url, site_name,
+                    cleaned, tldr, emb_vec_str
+                ))
+                if cur.fetchone():
+                    ingested_count += 1
+                cur.execute("""
+                    INSERT INTO site_discovered_urls (site_id, url_canonical, is_ingested)
+                    VALUES (%s, %s, TRUE)
+                    ON CONFLICT (site_id, url_canonical) DO UPDATE SET is_ingested = TRUE;
+                """, (site_id, c_url))
+
+            cur.execute("""
+                UPDATE watched_sites
+                SET status = 'ready',
+                    article_count = (SELECT COUNT(*) FROM site_discovered_urls WHERE site_id = %s AND is_ingested = TRUE),
+                    last_checked_at = NOW()
+                WHERE id = %s;
+            """, (site_id, site_id))
+        logger.info("[Site Follow: %s] Successfully processed; %d articles ingested, status set to ready.", site_name, ingested_count)
+
+    except Exception as e:
+        logger.exception("[Site Follow: %s] Failed processing site follow: %s", site_name, e)
+        try:
+            with get_db() as cur:
+                cur.execute("UPDATE watched_sites SET status = 'failed', last_checked_at = NOW() WHERE id = %s;", (site_id,))
+        except Exception:
+            pass
+
+
+@router.get("/api/users/{user_id}/sites", response_model=List[SiteOut])
+def get_user_followed_sites(user_id: str):
+    """Returns list of newsrooms/sites followed by the user."""
+    valid_user_id = validate_uuid(user_id, "user_id")
+    with get_db() as cur:
+        cur.execute("""
+            SELECT ws.id, ws.root_url, ws.site_name, ws.status, ws.article_count, ws.last_checked_at
+            FROM watched_sites ws
+            JOIN user_watched_sites uws ON ws.id = uws.site_id
+            WHERE uws.user_id = %s
+            ORDER BY uws.created_at DESC;
+        """, (valid_user_id,))
+        rows = cur.fetchall()
+        return [
+            SiteOut(
+                id=str(r[0]),
+                url=r[1],
+                name=r[2],
+                status=r[3] or "pending",
+                article_count=r[4] or 0,
+                last_checked_at=r[5].isoformat() if r[5] else None
+            )
+            for r in rows
+        ]
+
+
+@router.post("/api/users/{user_id}/sites", response_model=SiteOut)
+def follow_site(user_id: str, req: SiteFollowRequest, background_tasks: BackgroundTasks):
+    """
+    Follows a custom newsroom/site URL.
+    Enforces maximum 5 followed sites per user.
+    Launches background Tavily Map + Crawl pipeline.
+    """
+    valid_user_id = validate_uuid(user_id, "user_id")
+    raw_url = req.url.strip()
+    if not (raw_url.startswith("http://") or raw_url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
+
+    canonical_url = canonicalize_url(raw_url)
+    domain = extract_domain(canonical_url)
+    if not domain or domain == "news.web" or "." not in domain:
+        raise HTTPException(status_code=400, detail="Invalid site URL or domain")
+
+    # Generate readable name from domain (e.g. openai.com -> OpenAI, deepmind.google -> DeepMind)
+    site_name = domain.split(".")[0].capitalize()
+    if len(site_name) <= 3:
+        site_name = domain.upper()
+
+    with get_db() as cur:
+        # Enforce max 5 sites
+        cur.execute("SELECT COUNT(*) FROM user_watched_sites WHERE user_id = %s;", (valid_user_id,))
+        count = cur.fetchone()[0]
+        if count >= 5:
+            raise HTTPException(status_code=400, detail="Maximum 5 followed sites allowed per user")
+
+        # Insert or get watched_site
+        cur.execute("""
+            INSERT INTO watched_sites (site_name, root_url, status)
+            VALUES (%s, %s, 'pending')
+            ON CONFLICT (root_url) DO UPDATE
+            SET is_active = TRUE
+            RETURNING id, site_name, root_url, status, article_count, last_checked_at;
+        """, (site_name, canonical_url))
+        row = cur.fetchone()
+        site_id, site_name, root_url, status, article_count, last_checked_at = row
+
+        # Link in user_watched_sites
+        cur.execute("""
+            INSERT INTO user_watched_sites (user_id, site_id)
+            VALUES (%s, %s)
+            ON CONFLICT (user_id, site_id) DO NOTHING;
+        """, (valid_user_id, site_id))
+
+    background_tasks.add_task(_process_site_follow, str(site_id), canonical_url, site_name)
+
+    return SiteOut(
+        id=str(site_id),
+        url=root_url,
+        name=site_name,
+        status=status or "pending",
+        article_count=article_count or 0,
+        last_checked_at=last_checked_at.isoformat() if last_checked_at else None
+    )
+
+
+@router.delete("/api/users/{user_id}/sites/{site_id}")
+def unfollow_site(user_id: str, site_id: str):
+    """Unfollows a site for the user."""
+    valid_user_id = validate_uuid(user_id, "user_id")
+    valid_site_id = validate_uuid(site_id, "site_id")
+    with get_db() as cur:
+        cur.execute("""
+            DELETE FROM user_watched_sites
+            WHERE user_id = %s AND site_id = %s;
+        """, (valid_user_id, valid_site_id))
+    return {"status": "unfollowed", "site_id": str(valid_site_id)}

@@ -89,3 +89,14 @@ class DeepResearchRequest(BaseModel):
 class SiteWatchTriggerRequest(BaseModel):
     max_extract_per_site: int = Field(default=2, ge=1, le=5)
 
+class SiteFollowRequest(BaseModel):
+    url: str = Field(..., description="Root URL of the newsroom / blog / site to follow")
+
+class SiteOut(BaseModel):
+    id: str
+    url: str
+    name: str
+    status: str = Field(..., description="'pending', 'mapping', 'crawling', 'ready', 'failed', or 'no_articles'")
+    article_count: int = 0
+    last_checked_at: Optional[str] = None
+

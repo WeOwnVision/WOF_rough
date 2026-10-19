@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS tavily_calls (
     result_count INT DEFAULT 0,
     cluster_id UUID,
     cache_hit BOOLEAN DEFAULT FALSE,
+    detail TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_tavily_calls_created ON tavily_calls (created_at DESC);
@@ -45,8 +46,20 @@ CREATE TABLE IF NOT EXISTS watched_sites (
     select_paths TEXT[] DEFAULT ARRAY['/news/.*', '/press/.*', '/blog/.*'],
     last_mapped_at TIMESTAMP WITH TIME ZONE,
     is_active BOOLEAN DEFAULT TRUE,
+    status VARCHAR(20) DEFAULT 'pending',
+    article_count INT DEFAULT 0,
+    last_checked_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS user_watched_sites (
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    site_id UUID REFERENCES watched_sites(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (user_id, site_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_watched_sites_user ON user_watched_sites (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_watched_sites_site ON user_watched_sites (site_id);
 
 CREATE TABLE IF NOT EXISTS site_discovered_urls (
     id BIGSERIAL PRIMARY KEY,
@@ -93,6 +106,12 @@ ALTER TABLE articles ADD COLUMN IF NOT EXISTS fact_check_cache JSONB;
 -- 6. Article cover images (also in schema.sql; existing databases need them here)
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_status VARCHAR(50);
+
+-- 7. Tavily 5-Endpoint Telemetry & Watched Sites Expansions
+ALTER TABLE tavily_calls ADD COLUMN IF NOT EXISTS detail TEXT;
+ALTER TABLE watched_sites ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'pending';
+ALTER TABLE watched_sites ADD COLUMN IF NOT EXISTS article_count INT DEFAULT 0;
+ALTER TABLE watched_sites ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMP WITH TIME ZONE;
 """
 
 def sanitize_and_prewarm_db() -> None:
@@ -116,7 +135,6 @@ def sanitize_and_prewarm_db() -> None:
         MACRO_CATEGORIES,
     )
     from evidence_verifier import assign_origins
-    from site_watcher import seed_watched_sites
 
     with get_db() as cur:
         if os.getenv("TAVILY_MOCK", "0").lower() not in ("1", "true"):
@@ -222,23 +240,6 @@ def sanitize_and_prewarm_db() -> None:
                 VALUES (%s, %s, %s, %s::vector, %s::uuid[], %s, %s::jsonb, NOW())
                 ON CONFLICT (id) DO NOTHING;
             """, (det_cid, mac, c_title, rows[0][6], c_ids, o_info["independent_origins_count"], json.dumps(o_info["origins"])))
-
-    seed_watched_sites()
-    with get_db() as cur:
-        cur.execute("UPDATE watched_sites SET last_mapped_at = NOW() WHERE last_mapped_at IS NULL;")
-        cur.execute("SELECT COUNT(*) FROM site_discovered_urls;")
-        if (cur.fetchone() or [0])[0] == 0:
-            cur.execute("SELECT id FROM watched_sites;")
-            ws_ids = [r[0] for r in cur.fetchall()]
-            cur.execute("SELECT original_url FROM articles WHERE is_processed = TRUE AND macro_tag != 'Off-Topic' ORDER BY published_at DESC LIMIT 9;")
-            real_urls = [r[0] for r in cur.fetchall() if r[0]]
-            if ws_ids and real_urls:
-                for idx, u in enumerate(real_urls):
-                    cur.execute("""
-                        INSERT INTO site_discovered_urls (site_id, url_canonical, is_ingested)
-                        VALUES (%s, %s, TRUE)
-                        ON CONFLICT (site_id, url_canonical) DO NOTHING;
-                    """, (ws_ids[idx % len(ws_ids)], u))
 
 
 def run_migration() -> bool:
