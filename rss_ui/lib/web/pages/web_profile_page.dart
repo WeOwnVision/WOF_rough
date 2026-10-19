@@ -146,34 +146,6 @@ class _ProfileCard extends StatelessWidget {
             '${state.liked.length} liked',
             style: GoogleFonts.inter(color: AppColors.textBody, fontSize: 13.5),
           ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-            decoration: BoxDecoration(
-              color: AppColors.mint.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.local_fire_department_rounded,
-                  size: 15,
-                  color: AppColors.mint,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '14-DAY READING STREAK',
-                  style: GoogleFonts.inter(
-                    color: AppColors.mint,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );

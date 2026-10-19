@@ -33,27 +33,46 @@ class _WebGateState extends State<WebGate> {
     return ListenableBuilder(
       listenable: _state,
       builder: (context, _) {
-        if (_state.user != null) {
-          // Sunucu `onboarding_completed: false` döndürdüyse 3 adımlı
-          // onboarding (seç → tadına bak → akışın hazır) tamamlanır.
-          return _state.showOnboarding
-              ? const WebOnboardingPage()
-              : const WebShell();
-        }
-        if (_state.sessionLoading) {
-          return const Scaffold(
-            backgroundColor: AppColors.background,
-            body: LoadingView(message: 'Signing you in…'),
-          );
-        }
-        return _LoginScreen(state: _state);
+        // Ekranlar arası geçiş (ör. kullanıcı adından kategori seçimine)
+        // solarak ve hafifçe büyüyerek olur.
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 520),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(
+              scale: Tween(begin: 0.97, end: 1.0).animate(animation),
+              child: child,
+            ),
+          ),
+          child: _page(),
+        );
       },
     );
+  }
+
+  Widget _page() {
+    if (_state.user != null) {
+      // Sunucu `onboarding_completed: false` döndürdüyse 3 adımlı
+      // onboarding (seç → tadına bak → akışın hazır) tamamlanır.
+      return _state.showOnboarding
+          ? const WebOnboardingPage(key: ValueKey('onboarding'))
+          : const WebShell(key: ValueKey('shell'));
+    }
+    if (_state.sessionLoading) {
+      return const Scaffold(
+        key: ValueKey('loading'),
+        backgroundColor: AppColors.background,
+        body: LoadingView(message: 'Signing you in…'),
+      );
+    }
+    return _LoginScreen(key: const ValueKey('login'), state: _state);
   }
 }
 
 class _LoginScreen extends StatefulWidget {
-  const _LoginScreen({required this.state});
+  const _LoginScreen({super.key, required this.state});
 
   final AppState state;
 

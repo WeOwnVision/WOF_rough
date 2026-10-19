@@ -501,37 +501,13 @@ class _UserTile extends StatelessWidget {
             UserAvatar(size: 38, url: AppState.instance.user?.avatarUrl),
             const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    AppState.instance.user?.username ?? 'Reader',
-                    style: GoogleFonts.inter(
-                      color: AppColors.textPrimary,
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.local_fire_department_rounded,
-                        size: 13,
-                        color: AppColors.mint,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        '14-day streak',
-                        style: GoogleFonts.inter(
-                          color: AppColors.mint,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+              child: Text(
+                AppState.instance.user?.username ?? 'Reader',
+                style: GoogleFonts.inter(
+                  color: AppColors.textPrimary,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
             const Icon(
@@ -699,11 +675,6 @@ class _NotificationsButton extends StatelessWidget {
       'Central banks announced their rate decision',
     ),
     (Icons.headphones_outlined, 'Audio bulletin ready', "Today's brief · 2:34"),
-    (
-      Icons.local_fire_department_rounded,
-      'Reading streak',
-      'You completed day 14!',
-    ),
   ];
 
   @override

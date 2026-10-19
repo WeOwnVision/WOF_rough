@@ -217,35 +217,47 @@ class _PickStep extends StatelessWidget {
 
   final AppState state;
 
+  /// Seçim üç ekrana bölünür: kategoriler → konular ve "+" takip → cümle.
+  static const _titles = [
+    _StepTitle(
+      overline: 'Step 1 of 3 · Categories',
+      title: 'What do you want to read about?',
+      subtitle:
+          'Pick one or more areas. Your Feed shows stories from the '
+          'categories you pick.',
+    ),
+    _StepTitle(
+      overline: 'Step 1 of 3 · Topics',
+      title: 'Narrow it down',
+      subtitle:
+          'Topics decide which stories come first. You can also follow a '
+          'company, product or person. Both are optional.',
+    ),
+    _StepTitle(
+      overline: 'Step 1 of 3 · Your why',
+      title: 'What should your feed help you with?',
+      subtitle:
+          'Optional. One sentence, in any language. Stories closer to it '
+          'rank higher. Next, a quick taste check tunes your Feed.',
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _StepTitle(
-          overline: 'Step 1 of 3 · about 15 seconds',
-          title: 'What do you want to read about?',
-          subtitle:
-              'Your Feed shows stories from the categories you pick. Topics '
-              'decide which ones come first. Next, a quick taste check tunes '
-              'it to you.',
-        ),
-        const SizedBox(height: 32),
-        InterestForm(
-          submitLabel: 'Continue',
-          initialMacros: state.interests,
-          initialMicros: state.interestTags,
-          initialFollows: state.follows,
-          initialContext: state.interestContext ?? '',
-          onSubmit: (macros, micros, follows, why) =>
-              state.submitOnboardingPicks(
-                macroTags: macros,
-                microTags: micros,
-                follows: follows,
-                context: why,
-              ),
-        ),
-      ],
+    return InterestForm(
+      submitLabel: 'Continue',
+      stepped: true,
+      headerBuilder: (step) => _titles[step],
+      initialMacros: state.interests,
+      initialMicros: state.interestTags,
+      initialFollows: state.follows,
+      initialContext: state.interestContext ?? '',
+      onSubmit: (macros, micros, follows, why) => state.submitOnboardingPicks(
+        macroTags: macros,
+        microTags: micros,
+        follows: follows,
+        context: why,
+      ),
     );
   }
 }
