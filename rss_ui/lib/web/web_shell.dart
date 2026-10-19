@@ -11,6 +11,7 @@ import 'pages/web_discover_page.dart';
 import 'pages/web_feed_page.dart';
 import 'pages/web_home_page.dart';
 import 'pages/web_profile_page.dart';
+import 'widgets/tavily_terminal.dart';
 import 'widgets/web_ui.dart';
 
 /// Web (PC) arayüzünün iskeleti: solda menü, üstte bar, sağda sayfa.
@@ -115,6 +116,7 @@ class WebShell extends StatelessWidget {
                       ],
                     ),
                   ),
+                  const TavilyDock(),
                 ],
               );
             },
@@ -575,6 +577,8 @@ class _TopBar extends StatelessWidget {
             const _TopSearchField(),
             const SizedBox(width: 14),
           ],
+          const TavilyTerminalButton(),
+          const SizedBox(width: 14),
           const _NotificationsButton(),
           const SizedBox(width: 14),
           const _ProfileMenu(),

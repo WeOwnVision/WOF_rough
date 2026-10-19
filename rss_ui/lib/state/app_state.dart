@@ -118,8 +118,12 @@ class AppState extends ChangeNotifier {
         _clearFeed();
         _resetOnboarding();
         follows = const [];
+        _setSites(const []);
         if (needsOnboarding) onboardingStep = OnboardingStep.pick;
-        if (hasServerUser) loadFollows();
+        if (hasServerUser) {
+          loadFollows();
+          loadSites();
+        }
       }
       loggingIn = false;
       notifyListeners();
@@ -132,6 +136,7 @@ class AppState extends ChangeNotifier {
     navIndex = navHome;
     interestSummary = null;
     follows = const [];
+    _setSites(const []);
     saved.clear();
     liked.clear();
     read.clear();
@@ -255,6 +260,88 @@ class AppState extends ChangeNotifier {
     } on ApiException {
       // Takipler gösterilemezse ilgi alanları yine çalışır.
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Takip edilen siteler (Tavily Map + Crawl)
+  // -------------------------------------------------------------------------
+  /// Sunucudaki site takipleri. Ekleme ve silme anında kaydedilir; sunucu
+  /// siteyi arka planda tarar, durum [FollowedSite.status]'ta güncellenir.
+  List<FollowedSite> sites = const [];
+
+  /// Son site ekleme denemesinin hatası (geçersiz adres, 5 sınırı).
+  String? siteError;
+  bool addingSite = false;
+  Timer? _sitePoll;
+
+  void _setSites(List<FollowedSite> list) {
+    sites = list;
+    // Tarama sürerken durumu 3 sn'de bir yenile; bitince dur.
+    if (list.any((s) => s.isWorking)) {
+      _sitePoll ??= Timer.periodic(
+        const Duration(seconds: 3),
+        (_) => loadSites(),
+      );
+    } else {
+      _sitePoll?.cancel();
+      _sitePoll = null;
+    }
+  }
+
+  /// `GET /api/users/{id}/sites`.
+  Future<void> loadSites() async {
+    final current = user;
+    if (current == null || !hasServerUser) return;
+    try {
+      final list = await api.getSites(current.id);
+      if (user?.id != current.id) return;
+      _setSites(list);
+      notifyListeners();
+    } on ApiException {
+      // Siteler gösterilemezse ilgi alanları yine çalışır.
+    }
+  }
+
+  /// Siteyi takibe alır. Adres "https://" olmadan da yazılabilir.
+  Future<bool> addSite(String input) async {
+    final current = user;
+    if (current == null || !hasServerUser || addingSite) return false;
+    var url = input.trim();
+    if (url.isEmpty) return false;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://$url';
+    }
+    addingSite = true;
+    siteError = null;
+    notifyListeners();
+    try {
+      await api.addSite(current.id, url);
+      await loadSites();
+      return true;
+    } on ApiException catch (e) {
+      siteError = e.userMessage;
+      return false;
+    } finally {
+      addingSite = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> removeSite(FollowedSite site) async {
+    final current = user;
+    if (current == null || !hasServerUser) return;
+    _setSites([
+      for (final s in sites)
+        if (s.id != site.id) s,
+    ]);
+    siteError = null;
+    notifyListeners();
+    try {
+      await api.removeSite(current.id, site.id);
+    } on ApiException {
+      // Sonraki yüklemede sunucudaki hali görünür.
+    }
+    await loadSites();
   }
 
   /// Kategori/alt konu tercihlerini ve "neden" cümlesini (`PUT /preferences`)
@@ -524,8 +611,11 @@ class AppState extends ChangeNotifier {
   List<String> reasonsFor(Article a) {
     final u = user;
     if (u == null || !hasServerUser) return const [];
-    // "+" ile takip edilen şeyin adı geçiyorsa en güçlü gerekçe odur.
-    if (a.matchedFollows.isNotEmpty) return a.matchedFollows.take(2).toList();
+    // Takip edilen siteden geldiyse ya da "+" ile takip edilen şeyin adı
+    // geçiyorsa en güçlü gerekçe odur.
+    if (a.matchedSites.isNotEmpty || a.matchedFollows.isNotEmpty) {
+      return [...a.matchedSites, ...a.matchedFollows].take(2).toList();
+    }
     final topics = [
       for (final t in a.microTags)
         if (u.preferredMicroTags.contains(t)) tagLabel(t),

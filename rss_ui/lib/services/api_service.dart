@@ -239,6 +239,32 @@ class ApiService {
     );
   }
 
+  /// Sunucunun kabul ettiği en fazla takip edilen site sayısı.
+  static const maxSites = 5;
+
+  /// Kullanıcının takip ettiği siteler (son eklenen önce).
+  Future<List<FollowedSite>> getSites(String userId) async {
+    final json = await _getJson(_uri('/api/users/${_id(userId)}/sites'));
+    return _list(json).map(FollowedSite.fromJson).toList();
+  }
+
+  /// Site takibi ekler. Sunucu arka planda siteyi Tavily Map ile tarar,
+  /// en yeni yazıları Crawl ile çeker; ilerleme [FollowedSite.status]'ta.
+  /// Geçersiz adres ya da 5 sınırı [ApiErrorKind.badRequest] ile döner.
+  Future<FollowedSite> addSite(String userId, String url) async {
+    final json = await _postJson(_uri('/api/users/${_id(userId)}/sites'), {
+      'url': url.trim(),
+    });
+    return FollowedSite.fromJson(_map(json));
+  }
+
+  Future<void> removeSite(String userId, String siteId) async {
+    await _send(
+      'DELETE',
+      _uri('/api/users/${_id(userId)}/sites/${_id(siteId)}'),
+    );
+  }
+
   /// Kişiye özel akışın bir sayfası; en uygun haber önce gelir.
   ///
   /// Kullanıcı ilgi alanı seçmediyse sunucu tarih sıralı akış döndürür
@@ -493,7 +519,52 @@ class ApiService {
     return _map(json);
   }
 
-  /// Tavily + Nemotron 3 Ultra canlı doğrulama ve sentez akışı.
+  /// Sunucunun yaptığı Tavily çağrıları, eskiden yeniye. [afterId] verilirse
+  /// yalnızca ondan sonrakiler; verilmezse son [limit] çağrı.
+  Future<TavilyCallPage> getTavilyCalls({int? afterId, int limit = 50}) async {
+    final json = _map(
+      await _getJson(
+        _uri('/api/tavily/calls', {
+          'limit': '$limit',
+          if (afterId != null) 'after_id': '$afterId',
+        }),
+      ),
+    );
+    return TavilyCallPage(
+      calls: _list(json['calls']).map(TavilyCall.fromJson).toList(),
+      latestId: (json['latest_id'] as num?)?.toInt() ?? afterId ?? 0,
+    );
+  }
+
+  /// Kalan Tavily kredisi (tüm anahtarların toplamı); bilinmiyorsa `null`.
+  Future<int?> getTavilyCreditsRemaining() async {
+    final json = _map(await _getJson(_uri('/api/ingestion/status')));
+    return (json['credits_remaining'] as num?)?.toInt();
+  }
+
+  /// Haber için Tavily Research başlatır (ya da kaydedilmiş sonucu döner).
+  /// Sunucu soruyu haberin başlığı ve iddialarından kurar; ~25 sn bekleyebilir.
+  /// Bitmezse `running` döner, sonucu [getResearch] ile sorgulanır.
+  Future<ArticleResearch> startResearch(String articleId) async {
+    final json = await _send(
+      'POST',
+      _uri('/api/articles/${_id(articleId)}/deep-inspect/research'),
+      body: const {},
+      timeout: slowTimeout,
+    );
+    return ArticleResearch.fromJson(_map(json));
+  }
+
+  /// Haberin kaydedilmiş Research sonucu ya da süren işin durumu.
+  Future<ArticleResearch> getResearch(String articleId) async {
+    final json = await _getJson(
+      _uri('/api/articles/${_id(articleId)}/deep-inspect/research'),
+      timeout: slowTimeout,
+    );
+    return ArticleResearch.fromJson(_map(json));
+  }
+
+  /// Deep Inspect: Tavily Search + Extract ile canlı doğrulama akışı (SSE).
   Stream<DeepInspectEvent> deepInspectStream(String articleId) async* {
     final uri = _uri('/api/articles/${_id(articleId)}/deep-inspect');
     final req = http.Request('POST', uri)..headers.addAll(_headers);
@@ -504,7 +575,9 @@ class ApiService {
       throw ApiException.fromResponse(res.statusCode, text);
     }
 
-    final textStream = res.stream.transform(utf8.decoder).timeout(digestTimeout);
+    final textStream = res.stream
+        .transform(utf8.decoder)
+        .timeout(digestTimeout);
     var buffer = '';
     var event = '';
     final data = <String>[];
@@ -544,13 +617,10 @@ class ApiService {
     required String question,
     List<Map<String, String>> history = const [],
   }) async {
-    final json = await _postJson(
-      _uri('/api/articles/${_id(articleId)}/ask'),
-      {
-        'question': question.trim(),
-        'history': history,
-      },
-    );
+    final json = await _postJson(_uri('/api/articles/${_id(articleId)}/ask'), {
+      'question': question.trim(),
+      'history': history,
+    });
     final map = _map(json);
     return (map['answer'] as String?) ?? '';
   }

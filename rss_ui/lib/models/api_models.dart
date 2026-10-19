@@ -28,6 +28,7 @@ class Article {
     this.personalScore,
     this.isLiked,
     this.matchedFollows = const [],
+    this.matchedSites = const [],
     this.imageUrl,
     this.imageStatus,
     this.factCheckCache,
@@ -38,7 +39,8 @@ class Article {
     final macroTags = _stringList(json['macro_tags']);
     return Article(
       id: json['id'] as String,
-      source: (json['source'] as String?) ?? (json['source_feed'] as String?) ?? '',
+      source:
+          (json['source'] as String?) ?? (json['source_feed'] as String?) ?? '',
       title: (json['title'] as String?) ?? '',
       url: (json['url'] as String?) ?? (json['link'] as String?) ?? '',
       author: json['author'] as String?,
@@ -51,13 +53,18 @@ class Article {
       personalScore: (json['personal_score'] as num?)?.toInt(),
       isLiked: json['is_liked'] as bool?,
       matchedFollows: _stringList(json['matched_follows']),
+      matchedSites: _stringList(json['matched_sites']),
       imageUrl: json['image_url'] as String?,
       imageStatus: json['image_status'] as String?,
       factCheckCache: json['fact_check_cache'] is Map<String, dynamic>
-          ? FactCheckResult.fromJson(json['fact_check_cache'] as Map<String, dynamic>)
+          ? FactCheckResult.fromJson(
+              json['fact_check_cache'] as Map<String, dynamic>,
+            )
           : (json['fact_check_cache'] is Map
-              ? FactCheckResult.fromJson(Map<String, dynamic>.from(json['fact_check_cache'] as Map))
-              : null),
+                ? FactCheckResult.fromJson(
+                    Map<String, dynamic>.from(json['fact_check_cache'] as Map),
+                  )
+                : null),
     );
   }
 
@@ -86,6 +93,9 @@ class Article {
   /// Haberde adı geçen, kullanıcının "+" ile takip ettiği şeyler.
   final List<String> matchedFollows;
 
+  /// Haberin geldiği, kullanıcının takip ettiği siteler (ör. "anthropic.com").
+  final List<String> matchedSites;
+
   /// 4-Aşamalı görsel çözücüden gelen görsel linki ve durumu.
   final String? imageUrl;
   final String? imageStatus;
@@ -108,6 +118,7 @@ class Article {
     if (personalScore != null) 'personal_score': personalScore,
     if (isLiked != null) 'is_liked': isLiked,
     if (matchedFollows.isNotEmpty) 'matched_follows': matchedFollows,
+    if (matchedSites.isNotEmpty) 'matched_sites': matchedSites,
     if (imageUrl != null) 'image_url': imageUrl,
     if (imageStatus != null) 'image_status': imageStatus,
   };
@@ -155,14 +166,26 @@ class FactCheckResult {
       executiveSynthesis: (json['executive_synthesis'] as String?) ?? '',
       factCheckVerdict: (json['fact_check_verdict'] as String?) ?? 'Unverified',
       claimMatrix: claims is List
-          ? claims.whereType<Map<String, dynamic>>().map(ClaimItem.fromJson).toList()
+          ? claims
+                .whereType<Map<String, dynamic>>()
+                .map(ClaimItem.fromJson)
+                .toList()
           : const [],
       biasAndNuance: (json['bias_and_nuance'] as String?) ?? '',
       isCached: json['is_cached'] == true,
       limitedSource: json['limited_source'] == true,
       modelUsed: (json['model_used'] as String?) ?? '',
       sourcesConsulted: sources is List
-          ? sources.whereType<Map<String, dynamic>>().map((s) => Map<String, String>.from(s.map((k, v) => MapEntry(k.toString(), v?.toString() ?? '')))).toList()
+          ? sources
+                .whereType<Map<String, dynamic>>()
+                .map(
+                  (s) => Map<String, String>.from(
+                    s.map(
+                      (k, v) => MapEntry(k.toString(), v?.toString() ?? ''),
+                    ),
+                  ),
+                )
+                .toList()
           : const [],
     );
   }
@@ -608,4 +631,140 @@ class ArticlePage {
 
   /// Sunucu tam sayfa döndürdüyse sonraki sayfa da olabilir.
   final bool hasMore;
+}
+
+/// `GET /api/tavily/calls` satırı: sunucunun yaptığı tek bir Tavily çağrısı.
+class TavilyCall {
+  const TavilyCall({
+    required this.id,
+    required this.endpoint,
+    required this.purpose,
+    this.detail,
+    this.resultCount = 0,
+    this.latencyMs = 0,
+    this.credits = 0,
+    this.cacheHit = false,
+    this.createdAt,
+  });
+
+  factory TavilyCall.fromJson(Map<String, dynamic> json) => TavilyCall(
+    id: (json['id'] as num).toInt(),
+    endpoint: (json['endpoint'] as String?) ?? '',
+    purpose: (json['purpose'] as String?) ?? '',
+    detail: json['detail'] as String?,
+    resultCount: (json['result_count'] as num?)?.toInt() ?? 0,
+    latencyMs: (json['latency_ms'] as num?)?.toInt() ?? 0,
+    credits: (json['credits_est'] as num?)?.toDouble() ?? 0,
+    cacheHit: json['cache_hit'] == true,
+    createdAt: _date(json['created_at']),
+  );
+
+  final int id;
+
+  /// search, extract, map, crawl ya da research.
+  final String endpoint;
+
+  /// Çağrının nedeni (ör. demand_ingestion, support, site_follow_map).
+  final String purpose;
+
+  /// Sorgu metni, okunan site ya da araştırma sorusu.
+  final String? detail;
+  final int resultCount;
+  final int latencyMs;
+  final double credits;
+
+  /// Önbellekten geldiyse kredi harcanmadı.
+  final bool cacheHit;
+  final DateTime? createdAt;
+}
+
+/// `GET /api/tavily/calls` yanıtı.
+class TavilyCallPage {
+  const TavilyCallPage({required this.calls, required this.latestId});
+
+  /// Eskiden yeniye.
+  final List<TavilyCall> calls;
+
+  /// Sonraki istekte `after_id` olarak gönderilir.
+  final int latestId;
+}
+
+/// Kaynağı olan bir Research raporundaki tek kaynak.
+class ResearchSource {
+  const ResearchSource({required this.title, required this.url});
+
+  final String title;
+  final String url;
+}
+
+/// `/api/articles/{id}/deep-inspect/research`: haber için Tavily Research.
+class ArticleResearch {
+  const ArticleResearch({
+    required this.status,
+    this.report,
+    this.sources = const [],
+    this.cached = false,
+    this.credits,
+  });
+
+  factory ArticleResearch.fromJson(Map<String, dynamic> json) =>
+      ArticleResearch(
+        status: (json['status'] as String?) ?? 'none',
+        report: json['report'] as String?,
+        sources: [
+          for (final s in (json['sources'] as List?) ?? const [])
+            if (s is Map && s['url'] is String)
+              ResearchSource(
+                title: (s['title'] as String?) ?? s['url'] as String,
+                url: s['url'] as String,
+              ),
+        ],
+        cached: json['cached'] == true,
+        credits: (json['credits'] as num?)?.toDouble(),
+      );
+
+  /// none, running, completed ya da failed.
+  final String status;
+  final String? report;
+  final List<ResearchSource> sources;
+
+  /// Daha önce yapılmış ve kaydedilmiş; kredi harcanmadı.
+  final bool cached;
+  final double? credits;
+
+  bool get isRunning => status == 'running';
+  bool get isCompleted => status == 'completed' && (report ?? '').isNotEmpty;
+}
+
+/// `/api/users/{id}/sites`: kullanıcının takip ettiği site.
+class FollowedSite {
+  const FollowedSite({
+    required this.id,
+    required this.url,
+    required this.name,
+    required this.status,
+    this.articleCount = 0,
+  });
+
+  factory FollowedSite.fromJson(Map<String, dynamic> json) => FollowedSite(
+    id: json['id'] as String,
+    url: (json['url'] as String?) ?? '',
+    name: (json['name'] as String?) ?? '',
+    status: (json['status'] as String?) ?? 'pending',
+    articleCount: (json['article_count'] as num?)?.toInt() ?? 0,
+  );
+
+  final String id;
+  final String url;
+
+  /// Alan adı (ör. "anthropic.com").
+  final String name;
+
+  /// pending, mapping, crawling, ready, no_articles ya da failed.
+  final String status;
+  final int articleCount;
+
+  /// Sunucu siteyi hâlâ tarıyor (Map, ardından Crawl).
+  bool get isWorking =>
+      status == 'pending' || status == 'mapping' || status == 'crawling';
 }
