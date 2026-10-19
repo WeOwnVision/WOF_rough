@@ -427,6 +427,7 @@ def search_news(
             "time_range": time_range,
             "max_results": max_results,
             "include_raw_content": include_raw_content,
+            "include_images": True,
             "search_depth": depth,
             "include_usage": True,
             "timeout": timeout
@@ -510,6 +511,7 @@ def tavily_extract(
             "urls": url_list,
             "extract_depth": extract_depth,
             "format": format,
+            "include_images": True,
             "include_usage": True,
             "timeout": timeout
         }

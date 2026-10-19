@@ -8,6 +8,7 @@ from db import get_db
 from schemas import ScrapedArticleIn
 from url_utils import canonicalize_url, extract_domain
 from content_cleaner import clean_article_markdown
+from image_extractor import is_valid_article_image, extract_og_image_from_url
 from routers.deps import INGESTION_SECRET, validate_uuid
 from routers.users import get_personalized_feed_data
 
@@ -33,17 +34,18 @@ def ingest_articles(items: list[ScrapedArticleIn], x_secret: str = Header(...)):
 
             cleaned_content = clean_article_markdown(item.Baslik, item.TamMetin)
             
-            # Resolve image if present or fallback to domain favicon
+            # Resolve real article photo: validate candidate or fallback to fast OG extraction
             img_url = item.image_url or item.Resim
-            domain = extract_domain(canonical_link)
-            if img_url:
-                img_status = item.image_status or "resolved"
-            elif domain and domain != "news.web":
-                img_url = f"https://www.google.com/s2/favicons?domain={domain}&sz=128"
-                img_status = "favicon"
+            if img_url and is_valid_article_image(img_url):
+                img_status = "resolved"
             else:
-                img_url = None
-                img_status = "gradient_fallback"
+                og_candidate = extract_og_image_from_url(canonical_link, timeout=2.5)
+                if og_candidate:
+                    img_url = og_candidate
+                    img_status = "resolved"
+                else:
+                    img_url = None
+                    img_status = "gradient_fallback"
 
             cur.execute("""
                 INSERT INTO articles (url_hash, source_feed, title, original_url, author, published_at, clean_text, image_url, image_status)

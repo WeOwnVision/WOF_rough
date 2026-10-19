@@ -54,7 +54,7 @@ extension ArticleUi on Article {
   /// Çözümlenen gerçek görsel; yoksa kategoriye göre yer tutucu.
   String get image {
     final netImg = imageUrl?.trim();
-    if (netImg != null && netImg.startsWith('http')) {
+    if (netImg != null && netImg.startsWith('http') && !_isFavicon(netImg)) {
       return netImg;
     }
     final options = _placeholders[category] ?? _fallback;
@@ -62,7 +62,16 @@ extension ArticleUi on Article {
     return options[hash % options.length];
   }
 
-  bool get hasNetworkImage => imageUrl != null && imageUrl!.trim().startsWith('http');
+  bool get hasNetworkImage {
+    final netImg = imageUrl?.trim();
+    return netImg != null && netImg.startsWith('http') && !_isFavicon(netImg);
+  }
+
+  bool _isFavicon(String url) {
+    if (imageStatus == 'favicon' || imageStatus == 'gradient_fallback') return true;
+    final lower = url.toLowerCase();
+    return lower.contains('google.com/s2/favicons') || lower.endsWith('.ico') || lower.contains('format=svg') || lower.endsWith('.svg');
+  }
 }
 
 const _dir = 'assets/images/news';

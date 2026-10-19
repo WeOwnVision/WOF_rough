@@ -18,6 +18,7 @@ import query_scheduler
 from tavily_service import search_news, tavily_extract
 from url_utils import canonicalize_url, extract_domain
 from content_cleaner import clean_article_markdown, extract_normalized_shingles
+from image_extractor import resolve_article_image
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -344,7 +345,7 @@ def _harvest_query(
         text = clean_article_markdown(title, raw_text)
         if not text or len(text) < 250:
             short_urls_to_extract.append(clean_url)
-        staged_items.append((r, clean_url, title, text))
+        staged_items.append((r, clean_url, title, text, raw_text))
 
     extracted_by_url = {}
     if short_urls_to_extract:
@@ -355,7 +356,7 @@ def _harvest_query(
                 extracted_by_url[ep_url] = ep["raw_content"]
 
     payload = []
-    for r, clean_url, title, text in staged_items:
+    for r, clean_url, title, text, raw_text in staged_items:
         if (not text or len(text) < 250) and clean_url in extracted_by_url:
             text = clean_article_markdown(title, extracted_by_url[clean_url])
         if not text or len(text) < 250:
@@ -390,10 +391,15 @@ def _harvest_query(
         if not published_iso:
             continue
 
-        # Image resolution from Tavily result
-        img_url = r.get("image")
-        if not img_url and isinstance(r.get("images"), list) and r.get("images"):
-            img_url = r.get("images")[0]
+        # High-fidelity image resolution (Tavily candidates -> Markdown body -> fast OG fetch)
+        effective_raw = extracted_by_url.get(clean_url) or raw_text
+        tav_imgs = r.get("images") if isinstance(r.get("images"), list) else ([r.get("image")] if r.get("image") else [])
+        img_url, img_status = resolve_article_image(
+            raw_markdown=effective_raw,
+            tavily_images=tav_imgs,
+            page_url=clean_url,
+            fetch_og_fallback=True
+        )
 
         # Strict Ingest API contract payload
         payload.append({
@@ -404,6 +410,7 @@ def _harvest_query(
             "Tarih": published_iso,
             "TamMetin": text,
             "image_url": img_url,
+            "image_status": img_status,
             "Resim": img_url
         })
 
