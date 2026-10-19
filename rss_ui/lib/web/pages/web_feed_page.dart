@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -8,6 +9,8 @@ import '../../models/api_models.dart';
 import '../../models/article_ui.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/common.dart';
+import '../../widgets/smooth_scroll.dart';
 import '../../widgets/state_views.dart';
 import '../widgets/article_dialog.dart';
 import '../widgets/web_ui.dart';
@@ -32,28 +35,37 @@ class _WebFeedPageState extends State<WebFeedPage>
   late final AnimationController _anim;
 
   Animatable<double>? _tween;
-  double _dx = 0;
   bool _busy = false;
+
+  /// Kartın yatay kayması. setState yerine bunu dinleyen parçalar çizilir;
+  /// sürüklerken her karede bütün sayfayı yeniden kurmak takılma yapıyordu.
+  final _dx = ValueNotifier<double>(0);
+  final _scroll = SmoothScrollController();
 
   @override
   void initState() {
     super.initState();
-    _state.ensureFeed();
+    _state.loadWholeFeed();
     _anim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 260),
-    )..addListener(() => setState(() => _dx = _tween?.evaluate(_anim) ?? _dx));
+    )..addListener(() => _dx.value = _tween?.evaluate(_anim) ?? _dx.value);
   }
 
   @override
   void dispose() {
     _anim.dispose();
+    _dx.dispose();
+    _scroll.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
   Future<void> _animateTo(double target, Curve curve) {
-    _tween = Tween(begin: _dx, end: target).chain(CurveTween(curve: curve));
+    _tween = Tween(
+      begin: _dx.value,
+      end: target,
+    ).chain(CurveTween(curve: curve));
     return _anim.forward(from: 0);
   }
 
@@ -63,14 +75,15 @@ class _WebFeedPageState extends State<WebFeedPage>
     _busy = true;
     await _animateTo(like ? 1100 : -1100, Curves.easeIn);
     _state.react(news, like: like);
-    setState(() => _dx = 0);
+    _dx.value = 0;
     _busy = false;
   }
 
   void _onDragEnd(DragEndDetails d) {
     final v = d.primaryVelocity ?? 0;
-    if (_dx.abs() > _swipeThreshold || v.abs() > 900) {
-      _swipe(like: (_dx + v * 0.1) > 0);
+    final dx = _dx.value;
+    if (dx.abs() > _swipeThreshold || v.abs() > 900) {
+      _swipe(like: (dx + v * 0.1) > 0);
     } else {
       _animateTo(0, Curves.easeOutBack);
     }
@@ -79,6 +92,11 @@ class _WebFeedPageState extends State<WebFeedPage>
   void _sendToWai() {
     final news = _state.currentFeedArticle;
     if (news != null) _state.askAbout(news);
+  }
+
+  void _openDetail(Article news) {
+    _state.openFromDeck(news);
+    showArticleDialog(context, news);
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
@@ -92,7 +110,7 @@ class _WebFeedPageState extends State<WebFeedPage>
       case LogicalKeyboardKey.arrowUp:
         _sendToWai();
       case LogicalKeyboardKey.space:
-        if (news != null) showArticleDialog(context, news);
+        if (news != null) _openDetail(news);
       default:
         return KeyEventResult.ignored;
     }
@@ -111,6 +129,7 @@ class _WebFeedPageState extends State<WebFeedPage>
         child: ListenableBuilder(
           listenable: _state,
           builder: (context, _) => SingleChildScrollView(
+            controller: _scroll,
             padding: const EdgeInsets.fromLTRB(40, 32, 40, 48),
             child: Center(
               child: ConstrainedBox(
@@ -139,16 +158,27 @@ class _WebFeedPageState extends State<WebFeedPage>
     if (_state.feedLoading || _state.feedHasMore) {
       return const LoadingView(message: 'Loading stories…');
     }
-    return _EndCard(onRestart: _state.restartFeed);
+    return _EndCard(
+      category: _state.feedCategory,
+      onRestart: _state.rereadFeed,
+    );
   }
 
   Widget _buildDeckColumn() {
-    final feed = _state.feed;
-    final index = _state.feedIndex;
-    final current = _state.currentFeedArticle;
+    final deck = _state.deck;
+    final current = deck.firstOrNull;
+    final total = _state.feedFor(_state.feedCategory).length;
+    final done = total - deck.length;
 
     return Column(
       children: [
+        _DeckHeader(
+          category: _state.feedCategory,
+          left: deck.length,
+          total: total,
+          loading: _state.feedHasMore,
+        ),
+        const SizedBox(height: 20),
         SizedBox(
           width: _cardWidth + 40,
           height: _cardHeight + 24,
@@ -160,9 +190,8 @@ class _WebFeedPageState extends State<WebFeedPage>
                   children: [
                     // Arkadaki kartlar (deste görünümü).
                     for (var depth = 2; depth >= 1; depth--)
-                      if (index + depth < feed.length)
-                        _backCard(feed[index + depth], depth),
-                    _frontCard(current, index, feed.length),
+                      if (depth < deck.length) _backCard(deck[depth], depth),
+                    _frontCard(current, done, total),
                   ],
                 ),
         ),
@@ -197,25 +226,27 @@ class _WebFeedPageState extends State<WebFeedPage>
   }
 
   Widget _backCard(Article news, int depth) {
-    // Öndeki kart sürüklendikçe arkadaki kart öne doğru yaklaşır.
-    final pull = (_dx.abs() / _swipeThreshold).clamp(0.0, 1.0);
-    final d = depth - (depth == 1 ? pull : 0);
-    return Positioned(
+    final card = RepaintBoundary(
+      child: IgnorePointer(child: _NewsSwipeCard(news: news)),
+    );
+    Widget place(double d) => Positioned(
       top: 12.0 * d,
       child: Transform.scale(
         scale: 1 - 0.05 * d,
         alignment: Alignment.topCenter,
-        child: Opacity(
-          opacity: (1 - 0.3 * d).clamp(0.0, 1.0),
-          child: IgnorePointer(child: _NewsSwipeCard(news: news)),
-        ),
+        child: Opacity(opacity: (1 - 0.3 * d).clamp(0.0, 1.0), child: card),
       ),
+    );
+    if (depth != 1) return place(depth.toDouble());
+    // Öndeki kart sürüklendikçe hemen arkasındaki kart öne doğru yaklaşır.
+    return ValueListenableBuilder<double>(
+      valueListenable: _dx,
+      builder: (context, dx, _) =>
+          place(depth - (dx.abs() / _swipeThreshold).clamp(0.0, 1.0)),
     );
   }
 
   Widget _frontCard(Article news, int index, int total) {
-    final like = (_dx / _swipeThreshold).clamp(0.0, 1.0);
-    final dislike = (-_dx / _swipeThreshold).clamp(0.0, 1.0);
     return Positioned(
       top: 0,
       child: MouseRegion(
@@ -224,19 +255,25 @@ class _WebFeedPageState extends State<WebFeedPage>
           onHorizontalDragUpdate: (d) {
             if (_busy) return;
             _anim.stop();
-            setState(() => _dx += d.delta.dx);
+            _dx.value += d.delta.dx;
           },
           onHorizontalDragEnd: _busy ? null : _onDragEnd,
-          onTap: () => showArticleDialog(context, news),
-          child: Transform.translate(
-            offset: Offset(_dx, _dx.abs() * 0.06),
-            child: Transform.rotate(
-              angle: _dx / 1400 * math.pi / 4,
+          onTap: () => _openDetail(news),
+          child: ValueListenableBuilder<double>(
+            valueListenable: _dx,
+            // Kartın içi bir kez kurulur; sürüklerken yalnızca konumu değişir.
+            child: RepaintBoundary(
               child: _NewsSwipeCard(
                 news: news,
                 position: '${index + 1}/$total',
-                likeOpacity: like,
-                dislikeOpacity: dislike,
+                drag: _dx,
+              ),
+            ),
+            builder: (context, dx, card) => Transform.translate(
+              offset: Offset(dx, dx.abs() * 0.06),
+              child: Transform.rotate(
+                angle: dx / 1400 * math.pi / 4,
+                child: card,
               ),
             ),
           ),
@@ -250,17 +287,13 @@ class _WebFeedPageState extends State<WebFeedPage>
 // Kart
 // ---------------------------------------------------------------------------
 class _NewsSwipeCard extends StatelessWidget {
-  const _NewsSwipeCard({
-    required this.news,
-    this.position,
-    this.likeOpacity = 0,
-    this.dislikeOpacity = 0,
-  });
+  const _NewsSwipeCard({required this.news, this.position, this.drag});
 
   final Article news;
   final String? position;
-  final double likeOpacity;
-  final double dislikeOpacity;
+
+  /// Öndeki kartın kayması; LIKE / NOPE damgası buna göre belirir.
+  final ValueListenable<double>? drag;
 
   @override
   Widget build(BuildContext context) {
@@ -274,9 +307,9 @@ class _NewsSwipeCard extends StatelessWidget {
         border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 30,
-            offset: const Offset(0, 14),
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -292,7 +325,7 @@ class _NewsSwipeCard extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Image.asset(news.image, fit: BoxFit.cover),
+                    NewsImage(news.image),
                     const DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -435,21 +468,33 @@ class _NewsSwipeCard extends StatelessWidget {
               ),
             ],
           ),
-          if (likeOpacity > 0)
-            _Stamp(
-              label: 'LIKE',
-              color: AppColors.like,
-              opacity: likeOpacity,
-              alignment: Alignment.topLeft,
-              angle: -0.2,
-            ),
-          if (dislikeOpacity > 0)
-            _Stamp(
-              label: 'NOPE',
-              color: AppColors.dislike,
-              opacity: dislikeOpacity,
-              alignment: Alignment.topRight,
-              angle: 0.2,
+          if (drag != null)
+            Positioned.fill(
+              child: ValueListenableBuilder<double>(
+                valueListenable: drag!,
+                builder: (context, dx, _) {
+                  final t = _WebFeedPageState._swipeThreshold;
+                  if (dx > 0) {
+                    return _Stamp(
+                      label: 'LIKE',
+                      color: AppColors.like,
+                      opacity: (dx / t).clamp(0.0, 1.0),
+                      alignment: Alignment.topLeft,
+                      angle: -0.2,
+                    );
+                  }
+                  if (dx < 0) {
+                    return _Stamp(
+                      label: 'NOPE',
+                      color: AppColors.dislike,
+                      opacity: (-dx / t).clamp(0.0, 1.0),
+                      alignment: Alignment.topRight,
+                      angle: 0.2,
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
             ),
         ],
       ),
@@ -467,7 +512,7 @@ class _GlassPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xCC1A1A1F),
+        color: const Color(0xD9111110),
         borderRadius: BorderRadius.circular(16),
       ),
       child: DefaultTextStyle(
@@ -499,33 +544,28 @@ class _Stamp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: Container(
-          color: color.withValues(alpha: 0.10 * opacity),
-          padding: const EdgeInsets.all(40),
-          alignment: alignment,
-          child: Opacity(
-            opacity: opacity,
-            child: Transform.rotate(
-              angle: angle,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(color: color, width: 3),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  label,
-                  style: GoogleFonts.inter(
-                    color: color,
-                    fontSize: 30,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2,
-                  ),
+    return IgnorePointer(
+      child: Container(
+        color: color.withValues(alpha: 0.10 * opacity),
+        padding: const EdgeInsets.all(40),
+        alignment: alignment,
+        child: Opacity(
+          opacity: opacity,
+          child: Transform.rotate(
+            angle: angle,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              decoration: BoxDecoration(
+                border: Border.all(color: color, width: 3),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                label,
+                style: GoogleFonts.inter(
+                  color: color,
+                  fontSize: 30,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 2,
                 ),
               ),
             ),
@@ -536,9 +576,66 @@ class _Stamp extends StatelessWidget {
   }
 }
 
-class _EndCard extends StatelessWidget {
-  const _EndCard({required this.onRestart});
+/// Kartların üstü: açık sekme ve kaç haber kaldığı.
+class _DeckHeader extends StatelessWidget {
+  const _DeckHeader({
+    required this.category,
+    required this.left,
+    required this.total,
+    required this.loading,
+  });
 
+  final String? category;
+  final int left;
+  final int total;
+
+  /// Akışın kalanı hâlâ yükleniyor; sayılar henüz kesin değil.
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final String count;
+    if (loading && total == 0) {
+      count = 'Counting stories…';
+    } else if (left == 0) {
+      count = 'All $total read';
+    } else {
+      count = '$left unread of $total';
+    }
+    return SizedBox(
+      width: _WebFeedPageState._cardWidth,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Text(
+            category ?? 'All topics',
+            style: GoogleFonts.playfairDisplay(
+              color: AppColors.textPrimary,
+              fontSize: 24,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            count,
+            style: GoogleFonts.inter(
+              color: AppColors.textMuted,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EndCard extends StatelessWidget {
+  const _EndCard({required this.category, required this.onRestart});
+
+  /// Açık sekme; `null` = bütün kategoriler.
+  final String? category;
   final VoidCallback onRestart;
 
   @override
@@ -568,8 +665,11 @@ class _EndCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              "You've gone through today's feed. New stories will show up "
-              'here as they arrive.',
+              category == null
+                  ? "You've read every story in your Feed. New stories will "
+                        'show up here as they arrive.'
+                  : "You've read every $category story. New ones will show "
+                        'up here as they arrive.',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                 color: AppColors.textBody,
@@ -579,7 +679,7 @@ class _EndCard extends StatelessWidget {
             ),
             const SizedBox(height: 28),
             WebButton(
-              label: 'Start over',
+              label: 'Show them again',
               icon: Icons.replay_rounded,
               onTap: onRestart,
             ),
@@ -631,7 +731,7 @@ class _ActionBar extends StatelessWidget {
               shortcut: '↑',
               color: AppColors.accentLight,
               size: 84,
-              glow: true,
+              primary: true,
               onTap: onWai,
             ),
             const SizedBox(width: 56),
@@ -658,7 +758,7 @@ class _RoundAction extends StatelessWidget {
     required this.color,
     required this.size,
     required this.onTap,
-    this.glow = false,
+    this.primary = false,
   });
 
   final IconData icon;
@@ -667,7 +767,9 @@ class _RoundAction extends StatelessWidget {
   final Color color;
   final double size;
   final VoidCallback onTap;
-  final bool glow;
+
+  /// Ortadaki ana eylem: marka renginde çerçeve.
+  final bool primary;
 
   @override
   Widget build(BuildContext context) {
@@ -685,22 +787,13 @@ class _RoundAction extends StatelessWidget {
                 height: size,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: glow
-                      ? AppColors.accent.withValues(alpha: 0.28)
-                      : AppColors.surfaceAlt,
+                  color: AppColors.surfaceAlt,
                   border: Border.all(
-                    color: hovered
-                        ? color.withValues(alpha: 0.7)
+                    color: primary || hovered
+                        ? color.withValues(alpha: hovered ? 0.9 : 0.6)
                         : AppColors.border,
+                    width: primary ? 1.5 : 1,
                   ),
-                  boxShadow: glow
-                      ? [
-                          BoxShadow(
-                            color: AppColors.accent.withValues(alpha: 0.45),
-                            blurRadius: 28,
-                          ),
-                        ]
-                      : null,
                 ),
                 child: Icon(icon, color: color, size: size * 0.4),
               ),
@@ -709,9 +802,9 @@ class _RoundAction extends StatelessWidget {
             Text(
               label,
               style: GoogleFonts.inter(
-                color: glow ? AppColors.accentLight : AppColors.textBody,
+                color: primary ? AppColors.accentLight : AppColors.textBody,
                 fontSize: 13,
-                fontWeight: glow ? FontWeight.w700 : FontWeight.w500,
+                fontWeight: primary ? FontWeight.w600 : FontWeight.w500,
               ),
             ),
           ],
@@ -731,9 +824,10 @@ class _SidePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = state.feed.length;
-    final seen = state.feedIndex.clamp(0, total);
-    final upcoming = state.feed.skip(seen + 1).take(4).toList();
+    final deck = state.deck;
+    final total = state.feedFor(state.feedCategory).length;
+    final seen = total - deck.length;
+    final upcoming = deck.skip(1).take(4).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -759,7 +853,7 @@ class _SidePanel extends StatelessWidget {
                     color: AppColors.dislike,
                   ),
                   _Stat(
-                    value: '${total - seen}',
+                    value: '${deck.length}',
                     label: 'Left',
                     color: AppColors.accentLight,
                   ),
@@ -850,16 +944,6 @@ class _FeedSourcePanel extends StatelessWidget {
     }
 
     return PanelCard(
-      gradient: personal
-          ? RadialGradient(
-              center: const Alignment(0.9, -0.9),
-              radius: 1.4,
-              colors: [
-                AppColors.mint.withValues(alpha: 0.10),
-                AppColors.surface,
-              ],
-            )
-          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -8,11 +8,14 @@ import '../../services/api_service.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
+import '../../widgets/smooth_scroll.dart';
 import '../../widgets/state_views.dart';
 import 'web_ui.dart';
 
 /// Haber detay penceresi: tam metin, kaynak bağlantısı ve yorumlar.
 Future<void> showArticleDialog(BuildContext context, Article article) {
+  // Detayı açılan haber okundu sayılır (menüdeki okunmamış sayıları).
+  AppState.instance.markRead(article.id);
   return showDialog<void>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.7),
@@ -32,6 +35,7 @@ class _ArticleDialog extends StatefulWidget {
 class _ArticleDialogState extends State<_ArticleDialog> {
   final _state = AppState.instance;
   final _commentCtrl = TextEditingController();
+  final _scroll = SmoothScrollController();
 
   late Future<Article> _detail;
   late Future<List<ArticleComment>> _comments;
@@ -49,6 +53,7 @@ class _ArticleDialogState extends State<_ArticleDialog> {
   @override
   void dispose() {
     _commentCtrl.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -111,6 +116,7 @@ class _ArticleDialogState extends State<_ArticleDialog> {
           child: Scaffold(
             backgroundColor: Colors.transparent,
             body: SingleChildScrollView(
+              controller: _scroll,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -176,10 +182,7 @@ class _ArticleDialogState extends State<_ArticleDialog> {
   Widget _header(Article a) {
     return Stack(
       children: [
-        AspectRatio(
-          aspectRatio: 2.6,
-          child: Image.asset(a.image, fit: BoxFit.cover),
-        ),
+        AspectRatio(aspectRatio: 2.6, child: NewsImage(a.image)),
         Positioned(left: 20, top: 20, child: CategoryBadge(a.category)),
         Positioned(
           right: 16,

@@ -87,142 +87,130 @@ class _LoginScreenState extends State<_LoginScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: const Alignment(0, -0.4),
-            radius: 1.2,
-            colors: [
-              AppColors.accentDeep.withValues(alpha: 0.18),
-              AppColors.background,
-            ],
-          ),
-        ),
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: PanelCard(
-                padding: const EdgeInsets.fromLTRB(36, 40, 36, 36),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const WofLogo(fontSize: 34),
-                    const SizedBox(height: 6),
-                    Text(
-                      'World of Feeds',
-                      style: GoogleFonts.inter(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: PanelCard(
+              padding: const EdgeInsets.fromLTRB(36, 40, 36, 36),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const WofLogo(fontSize: 34),
+                  const SizedBox(height: 6),
+                  Text(
+                    'World of Feeds',
+                    style: GoogleFonts.inter(
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    'Welcome',
+                    style: GoogleFonts.playfairDisplay(
+                      color: AppColors.textPrimary,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Pick a username to start. New names get an account '
+                    'automatically.',
+                    style: GoogleFonts.inter(
+                      color: AppColors.textBody,
+                      fontSize: 14,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  TextField(
+                    controller: _username,
+                    autofocus: true,
+                    enabled: !state.loggingIn,
+                    onSubmitted: (_) => _submit(),
+                    maxLength: 50,
+                    cursorColor: AppColors.accentLight,
+                    style: GoogleFonts.inter(
+                      color: AppColors.textPrimary,
+                      fontSize: 15,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Username',
+                      counterText: '',
+                      hintStyle: GoogleFonts.inter(
                         color: AppColors.textMuted,
-                        fontSize: 13,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                    Text(
-                      'Welcome',
-                      style: GoogleFonts.playfairDisplay(
-                        color: AppColors.textPrimary,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Pick a username to start. New names get an account '
-                      'automatically.',
-                      style: GoogleFonts.inter(
-                        color: AppColors.textBody,
-                        fontSize: 14,
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    TextField(
-                      controller: _username,
-                      autofocus: true,
-                      enabled: !state.loggingIn,
-                      onSubmitted: (_) => _submit(),
-                      maxLength: 50,
-                      cursorColor: AppColors.accentLight,
-                      style: GoogleFonts.inter(
-                        color: AppColors.textPrimary,
                         fontSize: 15,
                       ),
-                      decoration: InputDecoration(
-                        hintText: 'Username',
-                        counterText: '',
-                        hintStyle: GoogleFonts.inter(
-                          color: AppColors.textMuted,
-                          fontSize: 15,
-                        ),
-                        prefixIcon: const Icon(
-                          Icons.person_outline_rounded,
-                          color: AppColors.iconMuted,
-                        ),
-                        filled: true,
-                        fillColor: AppColors.surfaceAlt,
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: AppColors.border),
-                        ),
-                        disabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: AppColors.border),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: AppColors.accent),
-                        ),
+                      prefixIcon: const Icon(
+                        Icons.person_outline_rounded,
+                        color: AppColors.iconMuted,
+                      ),
+                      filled: true,
+                      fillColor: AppColors.surfaceAlt,
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      disabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.accent),
                       ),
                     ),
-                    if (error != null) ...[
-                      const SizedBox(height: 14),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            offline
-                                ? Icons.cloud_off_rounded
-                                : Icons.error_outline_rounded,
-                            size: 18,
-                            color: AppColors.dislike,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              error.userMessage,
-                              style: GoogleFonts.inter(
-                                color: AppColors.dislike,
-                                fontSize: 13.5,
-                              ),
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 14),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          offline
+                              ? Icons.cloud_off_rounded
+                              : Icons.error_outline_rounded,
+                          size: 18,
+                          color: AppColors.dislike,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            error.userMessage,
+                            style: GoogleFonts.inter(
+                              color: AppColors.dislike,
+                              fontSize: 13.5,
                             ),
                           ),
-                        ],
-                      ),
-                    ],
-                    const SizedBox(height: 22),
-                    SizedBox(
-                      width: double.infinity,
-                      child: state.loggingIn
-                          ? const Center(
-                              child: SizedBox(
-                                width: 26,
-                                height: 26,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  color: AppColors.accentLight,
-                                ),
-                              ),
-                            )
-                          : WebButton(
-                              label: offline ? 'Try again' : 'Continue',
-                              icon: Icons.arrow_forward_rounded,
-                              onTap: _submit,
-                            ),
+                        ),
+                      ],
                     ),
                   ],
-                ),
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    child: state.loggingIn
+                        ? const Center(
+                            child: SizedBox(
+                              width: 26,
+                              height: 26,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: AppColors.accentLight,
+                              ),
+                            ),
+                          )
+                        : WebButton(
+                            label: offline ? 'Try again' : 'Continue',
+                            icon: Icons.arrow_forward_rounded,
+                            onTap: _submit,
+                          ),
+                  ),
+                ],
               ),
             ),
           ),

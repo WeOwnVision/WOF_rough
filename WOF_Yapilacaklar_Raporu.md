@@ -123,6 +123,7 @@ Takımın yapay zeka sorumlusunun demo projesindeki modelleri kendi sistemimizde
 | 2 | **Veritabanındaki "çöp" kayıtları temizlemek** | Yeni filtreler gelmeden önce toplanmış birkaç gereksiz sayfa (Instagram sayfası, halka arz takvimi, kripto fiyat sayfası) bazı kullanıcıların Daily Brief'inde görünüyor. Test için açtığımız kullanıcılar da silinecek. | Küçük (dakikalar) |
 | 3 | **Talha raporunu güncellemek** | Model değişiklikleri ve yeni ana sayfa raporda yok. | Küçük |
 | 4 | **"Verify this story" düğmesi** (öneri) | Tavily ödülü için doğrulamanın görünür olması lazım (Analiz, madde 2). | Orta |
+| 14 | **Haber resimleri** | Kartlarda kategoriye göre seçilen 10 sabit stok fotoğraf haberle alakasız (Nvidia haberine rastgele teknoloji fotoğrafı gibi). Haberin kendi kapak resmi, Tavily'den gelen Markdown metnin içinde zaten var; logo, ikon ve küçük resimleri eleyen bir filtreyle 20 haberin 13'ünde doğru kapak bulundu. Ek Tavily kredisi harcanmıyor. Resmi olmayan haberlere kategori rengi ve kaynak logosuyla tipografik kapak. Resim indirilmeyecek, yayıncının adresinden "Photo: kaynak.com" yazısıyla gösterilecek; tek bir ayarla tamamen tipografik kapağa geçilebilecek (karar 15). Kartlar için her haberin detayı ayrıca çekiliyor; Talha ileride liste yanıtına `image_url` eklerse bu ek istekler kalkar. Aynı işte detay penceresindeki Markdown metin de düzgün gösterilecek (linkler tıklanabilir yazıya dönecek, logolar ve menü artıkları silinecek). | Orta (sadece Flutter) |
 
 ### B. Senin kararını bekleyenler
 
@@ -132,6 +133,7 @@ Takımın yapay zeka sorumlusunun demo projesindeki modelleri kendi sistemimizde
 | 6 | Onboarding son ekranındaki "60 saniyelik özet" ne olsun? | Haber özetlerini yan yana dizen bugünkü hali kalabilir ya da yerine yeni "Latest Developments" kartı gelebilir. |
 | 7 | "Neden okuyorum" cümlesi İngilizceye çevrilmeye devam etsin mi? | Yeni model Türkçeyi doğrudan anlıyor, yani çeviri zorunlu değil. İngilizce hali yine de biraz daha iyi sonuç veriyor. |
 | 8 | Bugünkü işler kayıt altına alınsın mı? | GitHub'a göndermeden, sadece bu bilgisayarda bir "kayıt noktası" oluşturmak (Analiz, madde 1). |
+| 15 | Haber resimleri gösterilsin mi, yoksa tamamen tipografik kapak mı? | Telif açısından resmi indirmeden göstermek düşük risk ama sıfır değil (özellikle Getty gibi ajans fotoğrafları). Tipografik kapak sıfır risk. İkisi de hazırlanıp demo öncesi yan yana görülerek seçilebilir. Ayrıca detay penceresinde tam metin yerine "özet + kanıt + Read original" gösterilmesi (FeedProof belgesindeki "özet + kaynağa link" ilkesi). |
 
 ### C. Başkalarından beklenenler
 

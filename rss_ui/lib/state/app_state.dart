@@ -48,6 +48,7 @@ class AppState extends ChangeNotifier {
   static const _kUsername = 'username';
   static const _kSaved = 'saved_ids';
   static const _kLiked = 'liked_ids';
+  static const _kRead = 'read_ids';
 
   /// Sunucuya ulaşılamadığında oluşturulan geçici kullanıcıların öneki.
   static const _localPrefix = 'local-';
@@ -133,6 +134,7 @@ class AppState extends ChangeNotifier {
     follows = const [];
     saved.clear();
     liked.clear();
+    read.clear();
     _disliked.clear();
     _clearFeed();
     _resetOnboarding();
@@ -638,7 +640,7 @@ class AppState extends ChangeNotifier {
           final page = await api.getPersonalizedFeed(
             user!.id,
             page: _feedPage + 1,
-            pageSize: pageSize,
+            pageSize: personalPageSize,
           );
           if (generation != _feedGeneration) return;
           items = page.articles;
@@ -706,7 +708,9 @@ class AppState extends ChangeNotifier {
     feedError = null;
     feedIsPersonal = false;
     feedIsFallback = false;
-    feedIndex = 0;
+    // Tercihler değişince açık kategori artık seçili olmayabilir.
+    feedCategory = null;
+    _deckHold = null;
     sessionLikes = 0;
     sessionDislikes = 0;
     _offline = false;
@@ -730,15 +734,74 @@ class AppState extends ChangeNotifier {
     if (changed) _persistIds(_kLiked, liked);
   }
 
+  /// Okunmamış sayıları bütün akışı gerektirir; kişisel akış bu yüzden büyük
+  /// sayfalarla gelir (sunucu 400 haberi ~0,07 sn'de döndürüyor).
+  static const personalPageSize = 100;
+
+  /// Menüdeki okunmamış sayıları için akışın tamamını arka planda yükler.
+  Future<void> loadWholeFeed() async {
+    await ensureFeed();
+    while (hasServerUser && feedHasMore && feedError == null) {
+      await loadMoreFeed();
+    }
+  }
+
   // -------------------------------------------------------------------------
-  // WOF kaydırma
+  // WOF kaydırma ve kategori akışları
   // -------------------------------------------------------------------------
-  int feedIndex = 0;
   int sessionLikes = 0;
   int sessionDislikes = 0;
 
-  Article? get currentFeedArticle =>
-      feedIndex < feed.length ? feed[feedIndex] : null;
+  /// WOF Feed'de açık olan kategori; `null` = bütün kategoriler.
+  String? feedCategory;
+
+  /// Okunan haberler: kaydırılan ya da detayı açılan. Cihazda kullanıcıya
+  /// göre saklanır; menüdeki okunmamış sayıları buna göre hesaplanır.
+  final Set<String> read = {};
+
+  /// Desteden detayı açılan kart okundu sayılır ama kaydırılana kadar
+  /// destede kalır; yoksa pencere kapanınca kart kaybolurdu.
+  String? _deckHold;
+
+  /// WOF Feed'i [category] ile açar (`null` = bütün kategoriler).
+  void openFeed(String? category) {
+    if (navIndex == navFeed && feedCategory == category) return;
+    feedCategory = category;
+    _deckHold = null;
+    navIndex = navFeed;
+    notifyListeners();
+  }
+
+  /// [category] kategorisinin haberleri, kişisel sıralamayla.
+  List<Article> feedFor(String? category) => category == null
+      ? feed
+      : [
+          for (final a in feed)
+            if (a.macroTags.contains(category) || a.macroTag == category) a,
+        ];
+
+  int unreadCount(String? category) =>
+      feedFor(category).where((a) => !read.contains(a.id)).length;
+
+  /// Açık sekmenin destesi: okunmamış haberler.
+  List<Article> get deck => [
+    for (final a in feedFor(feedCategory))
+      if (!read.contains(a.id) || a.id == _deckHold) a,
+  ];
+
+  Article? get currentFeedArticle => deck.firstOrNull;
+
+  void markRead(String id) {
+    if (!read.add(id)) return;
+    _persistIds(_kRead, read);
+    notifyListeners();
+  }
+
+  /// Desteden detayı açılan kartı okundu sayar ama destede tutar.
+  void openFromDeck(Article article) {
+    _deckHold = article.id;
+    markRead(article.id);
+  }
 
   /// Bu oturumda beğenilmeyen haberler. Sunucu bunları akıştan çıkarır;
   /// "Start over" ile aynı kart tekrar geçilirse istek yeniden gönderilmez.
@@ -757,10 +820,12 @@ class AppState extends ChangeNotifier {
       sessionDislikes++;
     }
     _recordOpinion(article.id, like: like);
-    feedIndex++;
+    if (_deckHold == article.id) _deckHold = null;
+    read.add(article.id);
+    _persistIds(_kRead, read);
     notifyListeners();
     // Kartlar bitmeden sonraki sayfayı hazırla.
-    if (feed.length - feedIndex <= 3) loadMoreFeed();
+    if (deck.length <= 3) loadMoreFeed();
   }
 
   /// Beğeni ya da beğenmemeyi cihazda kaydeder ve sunucuya gönderir.
@@ -781,8 +846,10 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void restartFeed() {
-    feedIndex = 0;
+  /// Açık sekmenin haberlerini yeniden okunmamış yapar ("Show them again").
+  void rereadFeed() {
+    read.removeAll(feedFor(feedCategory).map((a) => a.id));
+    _persistIds(_kRead, read);
     sessionLikes = 0;
     sessionDislikes = 0;
     notifyListeners();
@@ -992,6 +1059,9 @@ class AppState extends ChangeNotifier {
     liked
       ..clear()
       ..addAll(_readIds(_kLiked));
+    read
+      ..clear()
+      ..addAll(_readIds(_kRead));
   }
 
   List<String> _readIds(String base) {
@@ -1188,10 +1258,16 @@ class AppState extends ChangeNotifier {
             question: question,
             history: history,
           );
+    // Her parçada değil, en fazla 50 ms'de bir yeniden çiz: parça başına
+    // çizim, yazı akarken bütün arayüzü takılttırıyordu.
+    final sinceRedraw = Stopwatch()..start();
     try {
       await for (final chunk in stream) {
         reply.text += chunk;
-        notifyListeners();
+        if (sinceRedraw.elapsedMilliseconds >= 50) {
+          sinceRedraw.reset();
+          notifyListeners();
+        }
       }
     } on ApiException catch (e) {
       reply

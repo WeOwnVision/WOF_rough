@@ -689,7 +689,7 @@ void main() {
     await tester.runAsync(() async {
       // Önce beğen, sonra aynı habere sola kaydır.
       state.react(state.feed.first, like: true);
-      state.restartFeed();
+      state.rereadFeed();
       state.react(state.feed.first, like: false);
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
@@ -702,9 +702,9 @@ void main() {
     expect(state.isLiked('id-0'), isFalse);
     expect(state.sessionDislikes, 1);
 
-    // Aynı kart "Start over" ile tekrar geçilirse istek tekrar gitmez.
+    // Aynı kart "Show them again" ile tekrar geçilirse istek tekrar gitmez.
     await tester.runAsync(() async {
-      state.restartFeed();
+      state.rereadFeed();
       state.react(state.feed.first, like: false);
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
@@ -716,6 +716,73 @@ void main() {
     // Yenilenen kişisel akışta beğenilmeyen haber yok.
     await tester.runAsync(state.refreshFeed);
     expect(state.feed.map((a) => a.id), isNot(contains('id-0')));
+  });
+
+  testWidgets('category tabs show unread counts and filter the deck', (
+    tester,
+  ) async {
+    Map<String, Object?> story(int i, String macro) => {
+      ..._article(i),
+      'macro_tag': macro,
+      'macro_tags': [macro],
+    };
+    _useServer(
+      MockClient((req) async {
+        final body = switch (req.url.path) {
+          '/api/users/login' => {
+            'id': 'u1',
+            'username': 'x',
+            'onboarding_completed': true,
+            'preferred_macro_tags': ['Tech', 'Finance'],
+          },
+          '/api/feed/personalized' => {
+            'is_fallback': false,
+            'articles': req.url.queryParameters['page'] == '1'
+                ? [
+                    story(0, 'Tech'),
+                    story(1, 'Finance'),
+                    story(2, 'Finance'),
+                    story(3, 'Tech'),
+                  ]
+                : [],
+          },
+          _ => <String, Object>{},
+        };
+        return http.Response(jsonEncode(body), 200);
+      }),
+    );
+    final state = AppState.instance;
+    await tester.runAsync(() async {
+      await state.login('x');
+      await state.loadWholeFeed();
+    });
+    expect(state.unreadCount(null), 4);
+    expect(state.unreadCount('Finance'), 2);
+
+    state.openFeed('Finance');
+    await _pumpAt(tester, const WebShell(), const Size(1440, 900));
+    expect(state.deck.map((a) => a.id), ['id-1', 'id-2']);
+    expect(find.text('2 unread of 2'), findsOneWidget);
+
+    await tester.runAsync(() async {
+      state.react(state.currentFeedArticle!, like: true);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pump();
+    expect(state.deck.map((a) => a.id), ['id-2']);
+    expect(find.text('1 unread of 2'), findsOneWidget);
+    // Okunan haber her sekmede okundu sayılır.
+    expect(state.unreadCount(null), 3);
+
+    // Detayı açılan haber okundu sayılır ama kaydırılana kadar destede kalır.
+    state.openFromDeck(state.currentFeedArticle!);
+    expect(state.unreadCount('Finance'), 0);
+    expect(state.deck.map((a) => a.id), ['id-2']);
+
+    // "Show them again" yalnızca açık sekmenin haberlerini geri getirir.
+    state.rereadFeed();
+    expect(state.unreadCount('Finance'), 2);
+    expect(state.unreadCount('Tech'), 2);
   });
 
   testWidgets('profile shows server interests and opens the editor', (

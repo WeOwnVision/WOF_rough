@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -5,8 +7,9 @@ import '../theme/app_colors.dart';
 
 /// Ekranlar arası paylaşılan küçük UI parçaları.
 
-class MintDot extends StatelessWidget {
-  const MintDot({super.key, this.size = 6});
+/// Marka noktası (logo, canlı işareti).
+class AccentDot extends StatelessWidget {
+  const AccentDot({super.key, this.size = 6});
 
   final double size;
 
@@ -15,14 +18,15 @@ class MintDot extends StatelessWidget {
     width: size,
     height: size,
     decoration: const BoxDecoration(
-      color: AppColors.mint,
+      color: AppColors.accent,
       shape: BoxShape.circle,
     ),
   );
 }
 
-class GradientOrb extends StatelessWidget {
-  const GradientOrb({super.key, this.size = 32, this.child});
+/// Yuvarlak simge zemini (WAI, görseli olmayan sohbet).
+class IconOrb extends StatelessWidget {
+  const IconOrb({super.key, this.size = 32, this.child});
 
   final double size;
   final Widget? child;
@@ -32,13 +36,10 @@ class GradientOrb extends StatelessWidget {
     width: size,
     height: size,
     alignment: Alignment.center,
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       shape: BoxShape.circle,
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [AppColors.accentLight, AppColors.accentDeep],
-      ),
+      color: AppColors.surfaceAlt,
+      border: Border.all(color: AppColors.border),
     ),
     child: child,
   );
@@ -56,13 +57,13 @@ class UserAvatar extends StatelessWidget {
     final fallback = Icon(
       Icons.person_outline_rounded,
       size: size * 0.53,
-      color: const Color(0xFF4C3A86),
+      color: AppColors.textMuted,
     );
     return Container(
       width: size,
       height: size,
       decoration: const BoxDecoration(
-        color: AppColors.accentLight,
+        color: AppColors.surfaceAlt,
         shape: BoxShape.circle,
       ),
       clipBehavior: Clip.antiAlias,
@@ -77,6 +78,41 @@ class UserAvatar extends StatelessWidget {
               webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
               errorBuilder: (_, _, _) => fallback,
             ),
+    );
+  }
+}
+
+/// Haber görseli; ekranda kapladığı boyutta çözülür. 1200 px'lik dosyaları
+/// 50 px'lik küçük resimler için bile tam boyutta açmak, kart ilk
+/// göründüğünde takılma yapıyordu.
+class NewsImage extends StatelessWidget {
+  const NewsImage(this.path, {super.key, this.width, this.height});
+
+  final String path;
+  final double? width;
+  final double? height;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = MediaQuery.devicePixelRatioOf(context);
+    return LayoutBuilder(
+      builder: (context, c) {
+        final w = width ?? (c.hasBoundedWidth ? c.maxWidth : 1200.0);
+        final h = height ?? (c.hasBoundedHeight ? c.maxHeight : 0.0);
+        // BoxFit.cover kırptığı için dar alanlarda yükseklik de belirleyici
+        // (görseller yaklaşık 4:3). 100 px'lik basamaklar, aynı görselin her
+        // küçük boyut farkı için yeniden çözülmesini önler.
+        final needed = math.max(w, h * 4 / 3) * ratio;
+        final cacheWidth = ((needed / 100).ceil() * 100).clamp(100, 1200);
+        return Image.asset(
+          path,
+          width: width,
+          height: height,
+          fit: BoxFit.cover,
+          cacheWidth: cacheWidth,
+          gaplessPlayback: true,
+        );
+      },
     );
   }
 }
@@ -126,7 +162,7 @@ class WofLogo extends StatelessWidget {
         SizedBox(width: fontSize * 0.25),
         Padding(
           padding: EdgeInsets.only(bottom: fontSize * 0.2),
-          child: MintDot(size: fontSize * 0.27),
+          child: AccentDot(size: fontSize * 0.27),
         ),
       ],
     );

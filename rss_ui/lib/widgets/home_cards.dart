@@ -25,7 +25,7 @@ class _Card extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(large ? 26 : 22),
-        border: large ? Border.all(color: const Color(0xFF26262C)) : null,
+        border: large ? Border.all(color: AppColors.border) : null,
       ),
       child: child,
     );
@@ -81,7 +81,7 @@ class DailySummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final header = Row(
       children: [
-        const MintDot(),
+        const AccentDot(),
         const SizedBox(width: 7),
         Text(
           label,
@@ -117,7 +117,7 @@ class DailySummaryCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Image.asset(article.image, fit: BoxFit.cover),
+            NewsImage(article.image),
             Positioned(
               left: 12,
               top: 12,
@@ -127,7 +127,7 @@ class DailySummaryCard extends StatelessWidget {
                   vertical: 7,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xCC1A1A1F),
+                  color: const Color(0xD9111110),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Text(
@@ -250,7 +250,7 @@ class _AskWaiButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.accent.withValues(alpha: 0.16),
+      color: AppColors.surfaceAlt,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,

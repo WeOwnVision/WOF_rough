@@ -5,6 +5,7 @@ import '../../models/api_models.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
+import '../../widgets/smooth_scroll.dart';
 import '../widgets/interest_form.dart';
 import '../widgets/web_ui.dart';
 
@@ -18,6 +19,13 @@ class WebProfilePage extends StatefulWidget {
 
 class _WebProfilePageState extends State<WebProfilePage> {
   final state = AppState.instance;
+  final _scroll = SmoothScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -33,6 +41,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
     return ListenableBuilder(
       listenable: state,
       builder: (context, _) => SingleChildScrollView(
+        controller: _scroll,
         padding: const EdgeInsets.fromLTRB(40, 32, 40, 56),
         child: Center(
           child: ConstrainedBox(
@@ -74,14 +83,6 @@ class _ProfileCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return PanelCard(
       padding: const EdgeInsets.fromLTRB(24, 32, 24, 26),
-      gradient: RadialGradient(
-        center: const Alignment(0, -0.6),
-        radius: 1.0,
-        colors: [
-          AppColors.accentDeep.withValues(alpha: 0.30),
-          AppColors.surface,
-        ],
-      ),
       child: Column(
         children: [
           Stack(
@@ -91,14 +92,7 @@ class _ProfileCard extends StatelessWidget {
                 padding: const EdgeInsets.all(3),
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: SweepGradient(
-                    colors: [
-                      AppColors.mint,
-                      AppColors.accentLight,
-                      AppColors.accentDeep,
-                      AppColors.mint,
-                    ],
-                  ),
+                  color: AppColors.border,
                 ),
                 child: Container(
                   padding: const EdgeInsets.all(3),
@@ -871,9 +865,7 @@ class _Tag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: muted
-            ? AppColors.surfaceAlt
-            : AppColors.accent.withValues(alpha: 0.18),
+        color: muted ? AppColors.surfaceAlt : AppColors.surfaceAlt,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(

@@ -8,6 +8,7 @@ import '../../models/article_ui.dart';
 import '../../services/api_service.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/smooth_scroll.dart';
 import '../../widgets/state_views.dart';
 import '../widgets/web_ui.dart';
 
@@ -23,6 +24,7 @@ class _WebDiscoverPageState extends State<WebDiscoverPage> {
   final _state = AppState.instance;
   late final _search = TextEditingController(text: _state.searchQuery);
   Timer? _debounce;
+  final _scroll = SmoothScrollController();
 
   // Arama
   int _searchSeq = 0;
@@ -49,6 +51,7 @@ class _WebDiscoverPageState extends State<WebDiscoverPage> {
   void dispose() {
     _debounce?.cancel();
     _search.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -125,6 +128,7 @@ class _WebDiscoverPageState extends State<WebDiscoverPage> {
     return ListenableBuilder(
       listenable: _state,
       builder: (context, _) => SingleChildScrollView(
+        controller: _scroll,
         padding: const EdgeInsets.fromLTRB(40, 32, 40, 56),
         child: Center(
           child: ConstrainedBox(
@@ -433,7 +437,7 @@ class _HitCard extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                 decoration: BoxDecoration(
-                  color: const Color(0xCC1A1A1F),
+                  color: const Color(0xD9111110),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
@@ -490,14 +494,6 @@ class _SidePanel extends StatelessWidget {
       children: [
         if (top != null)
           PanelCard(
-            gradient: RadialGradient(
-              center: const Alignment(1, 1),
-              radius: 1.4,
-              colors: [
-                AppColors.accentDeep.withValues(alpha: 0.22),
-                AppColors.surface,
-              ],
-            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
