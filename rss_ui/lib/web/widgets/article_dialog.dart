@@ -9,11 +9,14 @@ import '../../services/api_service.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
+import '../../widgets/smooth_scroll.dart';
 import '../../widgets/state_views.dart';
 import 'web_ui.dart';
 
 /// Haber detay penceresi: tam metin, kaynak bağlantısı ve yorumlar.
 Future<void> showArticleDialog(BuildContext context, Article article) {
+  // Detayı açılan haber okundu sayılır (menüdeki okunmamış sayıları).
+  AppState.instance.markRead(article.id);
   return showDialog<void>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.7),
@@ -33,6 +36,7 @@ class _ArticleDialog extends StatefulWidget {
 class _ArticleDialogState extends State<_ArticleDialog> {
   final _state = AppState.instance;
   final _commentCtrl = TextEditingController();
+  final _scroll = SmoothScrollController();
   final _askCtrl = TextEditingController();
 
   late Future<Article> _detail;
@@ -59,6 +63,7 @@ class _ArticleDialogState extends State<_ArticleDialog> {
   @override
   void dispose() {
     _commentCtrl.dispose();
+    _scroll.dispose();
     _askCtrl.dispose();
     super.dispose();
   }
@@ -120,7 +125,9 @@ class _ArticleDialogState extends State<_ArticleDialog> {
     });
 
     try {
-      await for (final event in _state.api.deepInspectStream(widget.article.id)) {
+      await for (final event in _state.api.deepInspectStream(
+        widget.article.id,
+      )) {
         if (!mounted) return;
         if (event.event == 'status') {
           setState(() => _inspectProgress = event.data);
@@ -176,9 +183,9 @@ class _ArticleDialogState extends State<_ArticleDialog> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to answer: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to answer: $e')));
       }
     } finally {
       if (mounted) setState(() => _asking = false);
@@ -203,6 +210,7 @@ class _ArticleDialogState extends State<_ArticleDialog> {
           child: Scaffold(
             backgroundColor: Colors.transparent,
             body: SingleChildScrollView(
+              controller: _scroll,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -247,7 +255,9 @@ class _ArticleDialogState extends State<_ArticleDialog> {
                               _body(detail),
                             const SizedBox(height: 26),
                             _actions(detail ?? a),
-                            if (_inspecting || _factCheck != null || _inspectError != null) ...[
+                            if (_inspecting ||
+                                _factCheck != null ||
+                                _inspectError != null) ...[
                               const SizedBox(height: 24),
                               _deepInspectCard(detail ?? a),
                             ],
@@ -272,10 +282,7 @@ class _ArticleDialogState extends State<_ArticleDialog> {
   Widget _header(Article a) {
     return Stack(
       children: [
-        AspectRatio(
-          aspectRatio: 2.6,
-          child: ArticleCoverImage(image: a.image, fit: BoxFit.cover),
-        ),
+        AspectRatio(aspectRatio: 2.6, child: NewsImage(a.image)),
         Positioned(left: 20, top: 20, child: CategoryBadge(a.category)),
         Positioned(
           right: 16,
@@ -508,12 +515,19 @@ class _ArticleDialogState extends State<_ArticleDialog> {
         ),
         child: Row(
           children: [
-            const Icon(Icons.info_outline_rounded, color: AppColors.dislike, size: 20),
+            const Icon(
+              Icons.info_outline_rounded,
+              color: AppColors.dislike,
+              size: 20,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 _inspectError!,
-                style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 13),
+                style: GoogleFonts.inter(
+                  color: AppColors.textPrimary,
+                  fontSize: 13,
+                ),
               ),
             ),
             IconButton(
@@ -529,12 +543,14 @@ class _ArticleDialogState extends State<_ArticleDialog> {
     final fc = _factCheck;
     if (fc == null) return const SizedBox.shrink();
 
-    final isVerified = fc.factCheckVerdict.toLowerCase().contains('verified') &&
+    final isVerified =
+        fc.factCheckVerdict.toLowerCase().contains('verified') &&
         !fc.factCheckVerdict.toLowerCase().contains('unverified');
     final isPartially = fc.factCheckVerdict.toLowerCase().contains('partially');
+    // Doğrulanamayan haber "yanlış" değildir; kırmızı yerine gri.
     final verdictColor = isVerified
-        ? AppColors.mint
-        : (isPartially ? const Color(0xFFFBBF24) : AppColors.accentLight);
+        ? AppColors.supported
+        : (isPartially ? AppColors.contested : AppColors.unverified);
 
     return Container(
       width: double.infinity,
@@ -542,7 +558,10 @@ class _ArticleDialogState extends State<_ArticleDialog> {
       decoration: BoxDecoration(
         color: AppColors.surfaceAlt,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: verdictColor.withValues(alpha: 0.4), width: 1.5),
+        border: Border.all(
+          color: verdictColor.withValues(alpha: 0.4),
+          width: 1.5,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -551,11 +570,16 @@ class _ArticleDialogState extends State<_ArticleDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: verdictColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: verdictColor.withValues(alpha: 0.5)),
+                  border: Border.all(
+                    color: verdictColor.withValues(alpha: 0.5),
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -563,7 +587,9 @@ class _ArticleDialogState extends State<_ArticleDialog> {
                     Icon(
                       isVerified
                           ? Icons.check_circle_rounded
-                          : (isPartially ? Icons.warning_rounded : Icons.help_outline_rounded),
+                          : (isPartially
+                                ? Icons.warning_rounded
+                                : Icons.help_outline_rounded),
                       size: 16,
                       color: verdictColor,
                     ),
@@ -582,7 +608,10 @@ class _ArticleDialogState extends State<_ArticleDialog> {
               const Spacer(),
               if (fc.isCached)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.border,
                     borderRadius: BorderRadius.circular(12),
@@ -626,7 +655,8 @@ class _ArticleDialogState extends State<_ArticleDialog> {
               height: 1.6,
             ),
           ),
-          if (fc.biasAndNuance.isNotEmpty && fc.biasAndNuance != 'No framing bias detected.') ...[
+          if (fc.biasAndNuance.isNotEmpty &&
+              fc.biasAndNuance != 'No framing bias detected.') ...[
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -637,7 +667,11 @@ class _ArticleDialogState extends State<_ArticleDialog> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.balance_rounded, size: 16, color: AppColors.accentLight),
+                  const Icon(
+                    Icons.balance_rounded,
+                    size: 16,
+                    color: AppColors.accentLight,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -679,23 +713,28 @@ class _ArticleDialogState extends State<_ArticleDialog> {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
                             color: claim.status.toLowerCase() == 'supported'
-                                ? AppColors.mint.withValues(alpha: 0.2)
+                                ? AppColors.supported.withValues(alpha: 0.2)
                                 : (claim.status.toLowerCase() == 'contested'
-                                    ? AppColors.dislike.withValues(alpha: 0.2)
-                                    : AppColors.border),
+                                      ? AppColors.contested.withValues(
+                                          alpha: 0.2,
+                                        )
+                                      : AppColors.border),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             claim.status.toUpperCase(),
                             style: GoogleFonts.inter(
                               color: claim.status.toLowerCase() == 'supported'
-                                  ? AppColors.mint
+                                  ? AppColors.supported
                                   : (claim.status.toLowerCase() == 'contested'
-                                      ? AppColors.dislike
-                                      : AppColors.textMuted),
+                                        ? AppColors.contested
+                                        : AppColors.unverified),
                               fontSize: 10.5,
                               fontWeight: FontWeight.w700,
                             ),
@@ -723,7 +762,8 @@ class _ArticleDialogState extends State<_ArticleDialog> {
                         height: 1.4,
                       ),
                     ),
-                    if (claim.sourceUrl != null && claim.sourceUrl!.isNotEmpty) ...[
+                    if (claim.sourceUrl != null &&
+                        claim.sourceUrl!.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       InkWell(
                         onTap: () => _openOriginal(claim.sourceUrl!),
@@ -733,7 +773,11 @@ class _ArticleDialogState extends State<_ArticleDialog> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.link_rounded, size: 14, color: AppColors.accent),
+                              const Icon(
+                                Icons.link_rounded,
+                                size: 14,
+                                color: AppColors.accent,
+                              ),
                               const SizedBox(width: 4),
                               Flexible(
                                 child: Text(
@@ -773,10 +817,19 @@ class _ArticleDialogState extends State<_ArticleDialog> {
                 for (final src in fc.sourcesConsulted)
                   if ((src['url'] ?? '').isNotEmpty)
                     ActionChip(
-                      avatar: const Icon(Icons.travel_explore_rounded, size: 14, color: AppColors.accentLight),
+                      avatar: const Icon(
+                        Icons.travel_explore_rounded,
+                        size: 14,
+                        color: AppColors.accentLight,
+                      ),
                       label: Text(
-                        (src['title'] ?? '').isNotEmpty ? src['title']! : (Uri.tryParse(src['url']!)?.host ?? src['url']!),
-                        style: GoogleFonts.inter(fontSize: 11.5, color: AppColors.textPrimary),
+                        (src['title'] ?? '').isNotEmpty
+                            ? src['title']!
+                            : (Uri.tryParse(src['url']!)?.host ?? src['url']!),
+                        style: GoogleFonts.inter(
+                          fontSize: 11.5,
+                          color: AppColors.textPrimary,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                       backgroundColor: AppColors.surface,
@@ -805,16 +858,22 @@ class _ArticleDialogState extends State<_ArticleDialog> {
                 child: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: msg['role'] == 'user' ? AppColors.surface : AppColors.quoteBg,
+                    color: msg['role'] == 'user'
+                        ? AppColors.surface
+                        : AppColors.quoteBg,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Icon(
-                        msg['role'] == 'user' ? Icons.person_outline_rounded : Icons.auto_awesome_rounded,
+                        msg['role'] == 'user'
+                            ? Icons.person_outline_rounded
+                            : Icons.auto_awesome_rounded,
                         size: 14,
-                        color: msg['role'] == 'user' ? AppColors.textMuted : AppColors.accent,
+                        color: msg['role'] == 'user'
+                            ? AppColors.textMuted
+                            : AppColors.accent,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -838,12 +897,22 @@ class _ArticleDialogState extends State<_ArticleDialog> {
               Expanded(
                 child: TextField(
                   controller: _askCtrl,
-                  style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 13),
+                  style: GoogleFonts.inter(
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                  ),
                   decoration: InputDecoration(
-                    hintText: 'Ask a question grounded in this verified report...',
-                    hintStyle: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 13),
+                    hintText:
+                        'Ask a question grounded in this verified report...',
+                    hintStyle: GoogleFonts.inter(
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                    ),
                     isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     filled: true,
                     fillColor: AppColors.surface,
                     border: OutlineInputBorder(

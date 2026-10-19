@@ -176,7 +176,7 @@ class _AudioBulletinPlayerState extends State<AudioBulletinPlayer>
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF34343A),
+                  color: AppColors.barInactive,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
@@ -261,7 +261,7 @@ class _PlayButton extends StatelessWidget {
             child: Icon(
               isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
               key: ValueKey(isPlaying),
-              color: const Color(0xFF1E1530),
+              color: AppColors.onAccent,
               size: 28,
             ),
           ),

@@ -89,7 +89,11 @@ class WebShell extends StatelessWidget {
                       children: [
                         _TopBar(
                           title: page.title,
-                          subtitle: page.subtitle ?? greetingLine(),
+                          subtitle:
+                              index == AppState.navFeed &&
+                                  state.feedCategory != null
+                              ? '${state.feedCategory} stories, ranked for you'
+                              : page.subtitle ?? greetingLine(),
                           showSearch: index != AppState.navDiscover,
                         ),
                         if (state.isOffline) const _OfflineBanner(),
@@ -164,6 +168,15 @@ class _SideNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final state = AppState.instance;
+    final onFeed = currentIndex == AppState.navFeed;
+    // Akış yüklenmeden sayı gösterme; "0" yanlış izlenim verir.
+    int? unread(String? category) {
+      if (state.feed.isEmpty) return null;
+      final n = state.unreadCount(category);
+      return n == 0 ? null : n;
+    }
+
     return Container(
       width: 264,
       decoration: const BoxDecoration(
@@ -197,17 +210,46 @@ class _SideNav extends StatelessWidget {
             padding: EdgeInsets.only(left: 14, bottom: 10),
             child: OverlineLabel('Menu'),
           ),
-          for (var i = 0; i < WebShell.pages.length; i++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: _SideNavTile(
-                page: WebShell.pages[i],
-                selected: i == currentIndex,
-                glow: i == AppState.navChat,
-                onTap: () => onTap(i),
+          // Kategori sekmeleri çoksa menü kendi içinde kayar.
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var i = 0; i < WebShell.pages.length; i++) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: i == AppState.navFeed
+                          ? _SideNavTile(
+                              page: WebShell.pages[i],
+                              selected: onFeed && state.feedCategory == null,
+                              badge: unread(null),
+                              onTap: () => state.openFeed(null),
+                            )
+                          : _SideNavTile(
+                              page: WebShell.pages[i],
+                              selected: i == currentIndex,
+                              onTap: () => onTap(i),
+                            ),
+                    ),
+                    // Kullanıcının ana kategorileri WOF Feed'in alt sekmeleri.
+                    if (i == AppState.navFeed)
+                      for (final category in state.interests)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: _SubNavTile(
+                            label: category,
+                            selected: onFeed && state.feedCategory == category,
+                            badge: unread(category),
+                            onTap: () => state.openFeed(category),
+                          ),
+                        ),
+                  ],
+                ],
               ),
             ),
-          const Spacer(),
+          ),
+          const SizedBox(height: 12),
           _WaiPromo(onTap: () => onTap(AppState.navChat)),
           const SizedBox(height: 16),
           _UserTile(onTap: () => onTap(AppState.navProfile)),
@@ -221,14 +263,16 @@ class _SideNavTile extends StatelessWidget {
   const _SideNavTile({
     required this.page,
     required this.selected,
-    required this.glow,
     required this.onTap,
+    this.badge,
   });
 
   final _WebPage page;
   final bool selected;
-  final bool glow;
   final VoidCallback onTap;
+
+  /// Okunmamış haber sayısı.
+  final int? badge;
 
   @override
   Widget build(BuildContext context) {
@@ -243,7 +287,7 @@ class _SideNavTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: selected
-                ? AppColors.accent.withValues(alpha: 0.14)
+                ? AppColors.surfaceAlt
                 : (hovered ? AppColors.surfaceAlt : Colors.transparent),
             borderRadius: BorderRadius.circular(14),
           ),
@@ -253,17 +297,6 @@ class _SideNavTile extends StatelessWidget {
                 width: 28,
                 height: 28,
                 alignment: Alignment.center,
-                decoration: glow && !selected
-                    ? BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            AppColors.accent.withValues(alpha: 0.4),
-                            AppColors.accent.withValues(alpha: 0.0),
-                          ],
-                        ),
-                      )
-                    : null,
                 child: Icon(
                   selected ? page.activeIcon : page.icon,
                   size: 21,
@@ -279,7 +312,10 @@ class _SideNavTile extends StatelessWidget {
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),
-              if (selected) ...[
+              if (badge != null) ...[
+                const Spacer(),
+                _CountBadge(badge!, selected: selected),
+              ] else if (selected) ...[
                 const Spacer(),
                 Container(
                   width: 6,
@@ -298,6 +334,96 @@ class _SideNavTile extends StatelessWidget {
   }
 }
 
+/// WOF Feed'in altındaki kategori sekmesi.
+class _SubNavTile extends StatelessWidget {
+  const _SubNavTile({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.badge,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final int? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    return Hoverable(
+      onTap: onTap,
+      builder: (context, hovered) {
+        final color = selected
+            ? AppColors.accentLight
+            : (hovered ? AppColors.textPrimary : AppColors.textMuted);
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          // Simgenin hizasından başlar; ana sekmeye bağlı olduğu görülsün.
+          margin: const EdgeInsets.only(left: 28),
+          padding: const EdgeInsets.fromLTRB(16, 8, 14, 8),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.surfaceAlt
+                : (hovered ? AppColors.surfaceAlt : Colors.transparent),
+            borderRadius: BorderRadius.circular(10),
+            border: Border(
+              left: BorderSide(
+                color: selected ? AppColors.accentLight : AppColors.border,
+                width: 2,
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    color: color,
+                    fontSize: 13.5,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (badge != null) _CountBadge(badge!, selected: selected),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Menüdeki okunmamış sayısı.
+class _CountBadge extends StatelessWidget {
+  const _CountBadge(this.count, {required this.selected});
+
+  final int count;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 26),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: GoogleFonts.inter(
+          color: selected ? AppColors.textPrimary : AppColors.textBody,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
 class _WaiPromo extends StatelessWidget {
   const _WaiPromo({required this.onTap});
 
@@ -308,16 +434,9 @@ class _WaiPromo extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
         borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.accentDeep.withValues(alpha: 0.35),
-            AppColors.quoteBg,
-          ],
-        ),
-        border: Border.all(color: AppColors.accent.withValues(alpha: 0.25)),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -451,8 +570,6 @@ class _TopBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const GradientOrb(size: 40),
-          const SizedBox(width: 16),
           Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -611,7 +728,7 @@ class _NotificationsButton extends StatelessWidget {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: AppColors.accent.withValues(alpha: 0.14),
+                      color: AppColors.surfaceAlt,
                       shape: BoxShape.circle,
                     ),
                     child: Icon(icon, size: 18, color: AppColors.accentLight),
@@ -690,7 +807,7 @@ class _OfflineBanner extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 10),
-      color: AppColors.accentDeep.withValues(alpha: 0.25),
+      color: AppColors.surfaceAlt,
       child: Row(
         children: [
           const Icon(Icons.cloud_off_rounded, size: 18, color: AppColors.mint),

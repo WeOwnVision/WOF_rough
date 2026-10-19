@@ -8,6 +8,7 @@ import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
 import '../../widgets/simple_markdown.dart';
+import '../../widgets/smooth_scroll.dart';
 import '../../widgets/state_views.dart';
 import '../widgets/article_dialog.dart';
 import '../widgets/interest_form.dart' show categoryIcon;
@@ -96,7 +97,7 @@ class _ThreadList extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: hovered
                             ? AppColors.accentLight
-                            : AppColors.accent.withValues(alpha: 0.18),
+                            : AppColors.surfaceAlt,
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -202,7 +203,7 @@ class _ThreadTile extends StatelessWidget {
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: selected
-              ? AppColors.accent.withValues(alpha: 0.14)
+              ? AppColors.surfaceAlt
               : (hovered ? AppColors.surfaceAlt : Colors.transparent),
           borderRadius: BorderRadius.circular(14),
         ),
@@ -211,16 +212,11 @@ class _ThreadTile extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: image == null
-                  ? GradientOrb(
+                  ? IconOrb(
                       size: 44,
-                      child: Icon(icon, size: 18, color: Colors.white),
+                      child: Icon(icon, size: 18, color: AppColors.accentLight),
                     )
-                  : Image.asset(
-                      image!,
-                      width: 44,
-                      height: 44,
-                      fit: BoxFit.cover,
-                    ),
+                  : NewsImage(image!, width: 44, height: 44),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -301,8 +297,9 @@ class _ChatPanelState extends State<_ChatPanel> {
 
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
-  final _scroll = ScrollController();
-  int _lastSignature = -1;
+  final _scroll = SmoothScrollController();
+  int _lastCount = -1;
+  int _lastLength = -1;
   String? _lastThread;
 
   @override
@@ -324,29 +321,35 @@ class _ChatPanelState extends State<_ChatPanel> {
     _inputFocus.requestFocus();
   }
 
+  /// Yeni mesajda en alta kayarak iner; yanıt yazılırken alttaysa yazıyı
+  /// animasyonsuz takip eder. Her parçada yeni bir animasyon başlatmak
+  /// kaydırmayı titretiyordu. Kullanıcı yukarı kaydırdıysa yerinde bırakır.
   void _scrollToEndIfNeeded() {
     final state = widget.state;
     final messages = state.activeMessages;
-    final signature =
-        messages.length * 100000 +
-        (messages.isEmpty ? 0 : messages.last.text.length);
-    if (signature == _lastSignature && state.activeThreadId == _lastThread) {
-      return;
-    }
-    final jump = state.activeThreadId != _lastThread;
-    _lastSignature = signature;
+    final count = messages.length;
+    final length = messages.isEmpty ? 0 : messages.last.text.length;
+    final threadChanged = state.activeThreadId != _lastThread;
+    final newMessage = count != _lastCount;
+    if (!threadChanged && !newMessage && length == _lastLength) return;
     _lastThread = state.activeThreadId;
+    _lastCount = count;
+    _lastLength = length;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scroll.hasClients) return;
-      final end = _scroll.position.maxScrollExtent;
-      if (jump) {
+      final position = _scroll.position;
+      final end = position.maxScrollExtent;
+      if (threadChanged) {
         _scroll.jumpTo(end);
-      } else {
+      } else if (newMessage) {
         _scroll.animateTo(
           end,
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOut,
         );
+      } else if (end - position.pixels < 240 &&
+          !position.isScrollingNotifier.value) {
+        _scroll.jumpTo(end);
       }
     });
   }
@@ -492,16 +495,6 @@ class _ChatHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 18, 24, 18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.accentDeep.withValues(alpha: 0.16),
-            AppColors.surface,
-          ],
-        ),
-      ),
       child: Row(
         children: [
           Container(
@@ -636,12 +629,7 @@ class _SentNews extends StatelessWidget {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
-                    child: ArticleCoverImage(
-                      image: news.image,
-                      width: 76,
-                      height: 60,
-                      fit: BoxFit.cover,
-                    ),
+                    child: NewsImage(news.image, width: 76, height: 60),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -782,12 +770,12 @@ class _AssistantBubble extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const GradientOrb(
+        const IconOrb(
           size: 34,
           child: Icon(
             Icons.auto_awesome_rounded,
             size: 16,
-            color: Colors.white,
+            color: AppColors.accentLight,
           ),
         ),
         const SizedBox(width: 12),
@@ -934,12 +922,7 @@ class _StartPanelState extends State<_StartPanel> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
-                    child: ArticleCoverImage(
-                      image: a.image,
-                      width: 56,
-                      height: 56,
-                      fit: BoxFit.cover,
-                    ),
+                    child: NewsImage(a.image, width: 56, height: 56),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -1158,7 +1141,7 @@ class _ContextPanel extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
               child: AspectRatio(
                 aspectRatio: 16 / 10,
-                child: ArticleCoverImage(image: news.image, fit: BoxFit.cover),
+                child: NewsImage(news.image),
               ),
             ),
             const SizedBox(height: 14),
@@ -1261,7 +1244,7 @@ class _CapabilitiesPanel extends StatelessWidget {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: AppColors.accent.withValues(alpha: 0.14),
+                      color: AppColors.surfaceAlt,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(icon, size: 18, color: AppColors.accentLight),
@@ -1615,7 +1598,7 @@ class _SourcesPanel extends StatelessWidget {
                         height: 26,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: AppColors.accent.withValues(alpha: 0.16),
+                          color: AppColors.surfaceAlt,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(

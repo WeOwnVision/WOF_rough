@@ -47,20 +47,17 @@ class PanelCard extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(22),
-    this.gradient,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
-  final Gradient? gradient;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: gradient == null ? AppColors.surface : null,
-        gradient: gradient,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: AppColors.border),
       ),
@@ -163,14 +160,8 @@ class LinkButton extends StatelessWidget {
 }
 
 /// Kategoriye göre rozet rengi.
-Color categoryColor(String category) => switch (category) {
-  'Tech' || 'AI' => AppColors.accent,
-  'Finance' || 'Hardware' => const Color(0xFF7DD3FC),
-  'Science' || 'Space' => const Color(0xFFFBBF24),
-  'Health' => AppColors.mint,
-  'Sports' || 'Gaming' => const Color(0xFFF49A8A),
-  _ => AppColors.iconMuted,
-};
+/// Kategoriler renkle ayrılmaz; gazetedeki bölüm başlıkları gibi tek renk.
+Color categoryColor(String category) => AppColors.textBody;
 
 /// Görsel üzerine yerleşen kategori rozeti.
 class CategoryBadge extends StatelessWidget {
@@ -180,19 +171,19 @@ class CategoryBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = categoryColor(category);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.88),
-        borderRadius: BorderRadius.circular(10),
+        color: const Color(0xD9111110),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
-        category,
+        category.toUpperCase(),
         style: GoogleFonts.inter(
-          color: const Color(0xFF16121F),
-          fontSize: 11.5,
+          color: AppColors.textPrimary,
+          fontSize: 10.5,
           fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
         ),
       ),
     );
@@ -220,7 +211,7 @@ class MatchBadge extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: const Color(0xCC1A1A1F),
+          color: const Color(0xD9111110),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
@@ -296,19 +287,8 @@ class NewsGridCard extends StatelessWidget {
           color: hovered ? AppColors.surfaceAlt : AppColors.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: hovered
-                ? AppColors.accent.withValues(alpha: 0.45)
-                : AppColors.border,
+            color: hovered ? AppColors.textMuted : AppColors.border,
           ),
-          boxShadow: hovered
-              ? [
-                  BoxShadow(
-                    color: AppColors.accent.withValues(alpha: 0.12),
-                    blurRadius: 24,
-                    offset: const Offset(0, 10),
-                  ),
-                ]
-              : null,
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
@@ -322,7 +302,7 @@ class NewsGridCard extends StatelessWidget {
                   AnimatedScale(
                     duration: const Duration(milliseconds: 300),
                     scale: hovered ? 1.05 : 1.0,
-                    child: ArticleCoverImage(image: news.image, fit: BoxFit.cover),
+                    child: NewsImage(news.image),
                   ),
                   Positioned(
                     left: 12,
@@ -422,12 +402,7 @@ class NewsListTile extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: ArticleCoverImage(
-                image: news.image,
-                width: thumbSize,
-                height: thumbSize,
-                fit: BoxFit.cover,
-              ),
+              child: NewsImage(news.image, width: thumbSize, height: thumbSize),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -527,8 +502,8 @@ class PillButton extends StatelessWidget {
   }
 }
 
-/// Açık mor zemin üzerindeki koyu metin rengi.
-const onAccent = Color(0xFF2E1F66);
+/// Marka rengi zemin üzerindeki yazı rengi.
+const onAccent = AppColors.onAccent;
 
 /// Birincil (dolu) ve ikincil (çerçeveli) web düğmesi.
 class WebButton extends StatelessWidget {

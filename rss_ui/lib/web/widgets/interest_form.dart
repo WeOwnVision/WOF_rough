@@ -889,7 +889,7 @@ class _CategoryCard extends StatelessWidget {
                         ? const Icon(
                             Icons.check_rounded,
                             size: 15,
-                            color: Color(0xFF16121F),
+                            color: AppColors.background,
                           )
                         : null,
                   ),

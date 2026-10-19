@@ -6,6 +6,7 @@ import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/home_cards.dart';
 import '../../widgets/simple_markdown.dart';
+import '../../widgets/smooth_scroll.dart';
 import '../../widgets/state_views.dart';
 import '../widgets/article_dialog.dart';
 import '../widgets/web_ui.dart';
@@ -21,12 +22,21 @@ class WebHomePage extends StatefulWidget {
 
 class _WebHomePageState extends State<WebHomePage> {
   final _state = AppState.instance;
+  final _scroll = SmoothScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
     // Akışı ve ardından ilk haberlerin karşılaştırmalı özetini yükle.
     _state.loadBrief();
+    // Menüdeki okunmamış sayıları için akışın kalanı arka planda gelir.
+    _state.loadWholeFeed();
   }
 
   @override
@@ -64,6 +74,7 @@ class _WebHomePageState extends State<WebHomePage> {
     // Daily Brief listesinde; ızgara onlardan sonrakilerle devam eder.
     final briefStories = personalBrief ? _state.briefArticles.length : 1;
     return SingleChildScrollView(
+      controller: _scroll,
       padding: const EdgeInsets.fromLTRB(40, 32, 40, 56),
       child: Center(
         child: ConstrainedBox(
@@ -133,7 +144,7 @@ class _WebHomePageState extends State<WebHomePage> {
                   ),
                   const SizedBox(height: 20),
                   _NewsGrid(
-                    news: feed.skip(briefStories).take(columns).toList(),
+                    news: feed.skip(briefStories).take(columns * 2).toList(),
                     columns: columns,
                   ),
                   const SizedBox(height: 44),
@@ -386,14 +397,6 @@ class _StreakPanel extends StatelessWidget {
     final today = DateTime.now().weekday - 1;
     const maxMinutes = 30;
     return PanelCard(
-      gradient: RadialGradient(
-        center: const Alignment(0.9, -0.9),
-        radius: 1.3,
-        colors: [
-          AppColors.accentDeep.withValues(alpha: 0.22),
-          AppColors.surface,
-        ],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -449,7 +452,7 @@ class _StreakPanel extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: i == today
                                   ? AppColors.accentLight
-                                  : AppColors.accent.withValues(alpha: 0.35),
+                                  : AppColors.barInactive,
                               borderRadius: BorderRadius.circular(6),
                             ),
                           ),

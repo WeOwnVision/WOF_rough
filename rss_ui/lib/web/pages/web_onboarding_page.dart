@@ -9,6 +9,7 @@ import '../../models/article_ui.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
+import '../../widgets/smooth_scroll.dart';
 import '../../widgets/state_views.dart';
 import '../widgets/article_dialog.dart';
 import '../widgets/interest_form.dart';
@@ -31,22 +32,13 @@ class WebOnboardingPage extends StatelessWidget {
     final state = AppState.instance;
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: const Alignment(0, -1.1),
-            radius: 1.4,
-            colors: [
-              AppColors.accentDeep.withValues(alpha: 0.16),
-              AppColors.background,
-            ],
-          ),
-        ),
-        child: ListenableBuilder(
+      body: SmoothScroll(
+        builder: (context, scroll) => ListenableBuilder(
           listenable: state,
           builder: (context, _) {
             final step = state.onboardingStep ?? OnboardingStep.pick;
             return SingleChildScrollView(
+              controller: scroll,
               padding: const EdgeInsets.fromLTRB(32, 28, 32, 56),
               child: Center(
                 child: ConstrainedBox(
@@ -153,7 +145,7 @@ class _StepIndicator extends StatelessWidget {
               : Text(
                   '$number',
                   style: GoogleFonts.inter(
-                    color: active ? const Color(0xFF0E2A1D) : color,
+                    color: active ? AppColors.background : color,
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
                   ),
@@ -456,9 +448,9 @@ class _TasteCard extends StatelessWidget {
         border: Border.all(color: edge, width: lean == 0 ? 1 : 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -472,7 +464,7 @@ class _TasteCard extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                ArticleCoverImage(image: article.image, fit: BoxFit.cover),
+                NewsImage(article.image),
                 Positioned(
                   left: 14,
                   top: 14,
@@ -658,11 +650,6 @@ class _BriefPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PanelCard(
-      gradient: RadialGradient(
-        center: const Alignment(0.9, -0.9),
-        radius: 1.4,
-        colors: [AppColors.mint.withValues(alpha: 0.10), AppColors.surface],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -780,12 +767,7 @@ class _PickTile extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: ArticleCoverImage(
-                image: article.image,
-                width: 64,
-                height: 64,
-                fit: BoxFit.cover,
-              ),
+              child: NewsImage(article.image, width: 64, height: 64),
             ),
             const SizedBox(width: 14),
             Expanded(
