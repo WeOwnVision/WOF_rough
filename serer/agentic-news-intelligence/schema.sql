@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS articles (
     embedding vector(1024),
     image_url TEXT,
     image_status VARCHAR(50),
+    raw_scraped_text TEXT,
+    executive_briefing TEXT,
     is_processed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -57,6 +59,8 @@ ALTER TABLE articles ADD COLUMN IF NOT EXISTS embedding vector(1024);
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_status VARCHAR(50);
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS fact_check_cache JSONB;
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS raw_scraped_text TEXT;
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS executive_briefing TEXT;
 
 
 -- 3. Social Paragraph Annotations

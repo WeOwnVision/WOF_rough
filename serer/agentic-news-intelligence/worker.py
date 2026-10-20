@@ -99,11 +99,14 @@ def init_db_schema():
                 ADD COLUMN IF NOT EXISTS macro_tags TEXT[],
                 ADD COLUMN IF NOT EXISTS embedding vector({embedding_dim()}),
                 ADD COLUMN IF NOT EXISTS error_message TEXT,
-                ADD COLUMN IF NOT EXISTS retry_count INT DEFAULT 0;
+                ADD COLUMN IF NOT EXISTS retry_count INT DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS raw_scraped_text TEXT,
+                ADD COLUMN IF NOT EXISTS executive_briefing TEXT;
+                UPDATE articles SET raw_scraped_text = clean_text WHERE raw_scraped_text IS NULL;
                 CREATE INDEX IF NOT EXISTS idx_articles_macro_tags ON articles USING GIN (macro_tags);
                 CREATE INDEX IF NOT EXISTS idx_articles_embedding ON articles USING hnsw (embedding vector_cosine_ops);
             """)
-        logger.info("Database schema columns verified (confidence_score, on_topic_score, macro_tags, embedding, error_message, retry_count).")
+        logger.info("Database schema columns verified (confidence_score, on_topic_score, macro_tags, embedding, raw_scraped_text, executive_briefing).")
     except Exception as e:
         logger.warning("Could not verify DB columns: %s", e)
 
@@ -209,8 +212,8 @@ def generate_full_enrichment(title: str, text: str, hint: str = "") -> tuple[str
 _embed_lock = threading.Lock()
 
 
-def save_article_enrichment(art_id: str, macro: str, macro_tags: list, micro: list, tldr: str, title: str = "", conf: float = None, on_topic: float = None):
-    """Saves enriched article to DB, generating and storing 384-d dense vector embeddings."""
+def save_article_enrichment(art_id: str, macro: str, macro_tags: list, micro: list, tldr: str, title: str = "", conf: float = None, on_topic: float = None, briefing: str = None):
+    """Saves enriched article to DB, generating and storing dense vector embeddings and briefing."""
     embedding = None
     if title or tldr:
         try:
@@ -225,15 +228,21 @@ def save_article_enrichment(art_id: str, macro: str, macro_tags: list, micro: li
             cur.execute("""
                 UPDATE articles 
                 SET macro_tag = %s, macro_tags = %s, micro_tags = %s, tldr = %s, 
-                    confidence_score = %s, on_topic_score = %s, embedding = %s, is_processed = TRUE 
+                    confidence_score = %s, on_topic_score = %s, embedding = %s, 
+                    executive_briefing = COALESCE(%s, executive_briefing),
+                    clean_text = COALESCE(%s, clean_text),
+                    is_processed = TRUE 
                 WHERE id = %s;
-            """, (macro, macro_tags, micro, tldr, conf, on_topic, embedding, art_id))
+            """, (macro, macro_tags, micro, tldr, conf, on_topic, embedding, briefing, briefing, art_id))
         except Exception:
             cur.execute("""
                 UPDATE articles 
-                SET macro_tag = %s, micro_tags = %s, tldr = %s, embedding = %s, is_processed = TRUE 
+                SET macro_tag = %s, micro_tags = %s, tldr = %s, embedding = %s, 
+                    executive_briefing = COALESCE(%s, executive_briefing),
+                    clean_text = COALESCE(%s, clean_text),
+                    is_processed = TRUE 
                 WHERE id = %s;
-            """, (macro, micro, tldr, embedding, art_id))
+            """, (macro, micro, tldr, embedding, briefing, briefing, art_id))
 
     # Incremental Semantic Story Clustering (C2: auto-populate story_clusters on enrichment)
     if embedding and macro and macro != "Off-Topic":
@@ -304,14 +313,14 @@ def save_article_enrichment(art_id: str, macro: str, macro_tags: list, micro: li
 OFF_TOPIC_TLDR = "Filtered out: Article does not match monitored news topics."
 
 
-def enrich_with_llm(art_id, title: str, safe_text: str) -> None:
+def enrich_with_llm(art_id, title: str, safe_text: str, source: str = "") -> None:
     """
-    nano mode: topic gate, Nano summary and labels (llm_enrichment.py). If a Nano
-    step fails, the original single FAST_MODEL call labels and summarizes instead.
+    nano mode: topic gate, Nano summary, labels, and executive briefing (llm_enrichment.py).
+    If a Nano step fails, the original single FAST_MODEL call labels and summarizes instead.
     """
     t0 = time.perf_counter()
     try:
-        result = llm_enrichment.enrich(title, safe_text)
+        result = llm_enrichment.enrich(title, safe_text, source=source)
     except Exception as e:
         logger.warning("[Worker Nano] %s failed (%s); falling back to FAST_MODEL.", title[:35], e)
         from taxonomy import normalize_macro_tag
@@ -340,7 +349,8 @@ def enrich_with_llm(art_id, title: str, safe_text: str) -> None:
         micro=result.micro_tags,
         tldr=result.tldr,
         title=title,
-        on_topic=NANO_ON_TOPIC_SCORE
+        on_topic=NANO_ON_TOPIC_SCORE,
+        briefing=result.briefing
     )
     logger.info(
         "[Worker Nano] %s -> %s / %s (Total: %.0fms)",
@@ -350,7 +360,11 @@ def enrich_with_llm(art_id, title: str, safe_text: str) -> None:
 
 def process_article(row, classifier=None, has_classifier: bool = False) -> None:
     """Enriches one article; failures are counted in retry_count (gives up after 3)."""
-    art_id, title, text, r_count = row
+    art_id = row[0]
+    title = row[1]
+    text = row[2]
+    r_count = row[3]
+    source_feed = row[4] if len(row) > 4 else ""
     try:
         # Defensive cleaning to strip tail widgets before Laya triage & embedding
         cleaned_body, _ = clean_markdown_article(text or "")
@@ -359,7 +373,7 @@ def process_article(row, classifier=None, has_classifier: bool = False) -> None:
         triage = None
 
         if ENRICHMENT_ENGINE == "nano":
-            enrich_with_llm(art_id, title, safe_text)
+            enrich_with_llm(art_id, title, safe_text, source=source_feed)
             return
 
         # --- STAGE 1: Fast Sub-100ms SLM Triage (if enabled) ---
@@ -465,7 +479,7 @@ def process_article(row, classifier=None, has_classifier: bool = False) -> None:
 def process_batch() -> bool:
     with get_db() as cur:
         cur.execute("""
-            SELECT id, title, clean_text, COALESCE(retry_count, 0)
+            SELECT id, title, clean_text, COALESCE(retry_count, 0), source_feed
             FROM articles
             WHERE is_processed = FALSE
               AND (retry_count IS NULL OR retry_count < 3)

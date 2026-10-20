@@ -163,7 +163,7 @@ def _reader(user_id: str) -> str:
 def _story_material(article_id: Optional[str]) -> Tuple[str, List[dict], str]:
     valid_id = validate_uuid(article_id or "", "article_id")
     with get_db() as cur:
-        cur.execute(f"SELECT {ARTICLE_COLUMNS}, clean_text FROM articles WHERE id = %s;", (valid_id,))
+        cur.execute(f"SELECT {ARTICLE_COLUMNS}, COALESCE(raw_scraped_text, clean_text) FROM articles WHERE id = %s;", (valid_id,))
         row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Article not found")

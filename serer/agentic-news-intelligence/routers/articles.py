@@ -48,13 +48,14 @@ def ingest_articles(items: list[ScrapedArticleIn], x_secret: str = Header(...)):
                     img_status = "gradient_fallback"
 
             cur.execute("""
-                INSERT INTO articles (url_hash, source_feed, title, original_url, author, published_at, clean_text, image_url, image_status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO articles (url_hash, source_feed, title, original_url, author, published_at, clean_text, raw_scraped_text, image_url, image_status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (url_hash) DO UPDATE SET
                     image_url = COALESCE(EXCLUDED.image_url, articles.image_url),
-                    image_status = COALESCE(EXCLUDED.image_status, articles.image_status)
+                    image_status = COALESCE(EXCLUDED.image_status, articles.image_status),
+                    raw_scraped_text = COALESCE(articles.raw_scraped_text, EXCLUDED.raw_scraped_text)
                 RETURNING id;
-            """, (url_hash, item.Site, item.Baslik, canonical_link, item.Yazar, pub_date, cleaned_content, img_url, img_status))
+            """, (url_hash, item.Site, item.Baslik, canonical_link, item.Yazar, pub_date, cleaned_content, cleaned_content, img_url, img_status))
             if cur.fetchone():
                 inserted += 1
 
@@ -114,18 +115,55 @@ def get_article(article_id: str):
     valid_id = validate_uuid(article_id, "article_id")
     with get_db() as cur:
         cur.execute("""
-            SELECT id, source_feed, title, original_url, author, published_at, clean_text, macro_tag, macro_tags, micro_tags, tldr, image_url, image_status
+            SELECT id, source_feed, title, original_url, author, published_at, 
+                   executive_briefing, COALESCE(raw_scraped_text, clean_text), 
+                   macro_tag, macro_tags, micro_tags, tldr, image_url, image_status
             FROM articles WHERE id = %s;
         """, (valid_id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Article not found")
+
+        source = row[1]
+        title = row[2]
+        briefing = row[6]
+        raw_clean = row[7]
+        tldr = row[11]
+
+        # 1. Use existing executive briefing if available
+        if briefing and briefing.strip():
+            body_display = briefing.strip()
+        else:
+            # 2. Generate on-the-fly so the body is a REAL Big TL;DR and never duplicates the 2-sentence summary
+            text_for_briefing = raw_clean or ""
+            if text_for_briefing and len(text_for_briefing.strip()) >= 80:
+                try:
+                    from llm_enrichment import generate_briefing
+                    gen_briefing = generate_briefing(title, text_for_briefing, source=source or "")
+                    if gen_briefing and gen_briefing.strip():
+                        body_display = gen_briefing.strip()
+                        # Persist to DB so subsequent requests are instant
+                        try:
+                            cur.execute(
+                                "UPDATE articles SET executive_briefing = %s, clean_text = %s WHERE id = %s;",
+                                (body_display, body_display, valid_id)
+                            )
+                        except Exception:
+                            pass
+                    else:
+                        body_display = raw_clean
+                except Exception as ex:
+                    body_display = raw_clean
+            else:
+                body_display = raw_clean
+
         return {
             "id": str(row[0]), "source": row[1], "title": row[2], "url": row[3],
-            "author": row[4], "published_at": row[5], "clean_text": row[6],
-            "macro_tag": row[7],
-            "macro_tags": row[8] if row[8] else ([row[7]] if row[7] else []),
-            "micro_tags": row[9], "tldr": row[10],
-            "image_url": row[11],
-            "image_status": row[12] or ("resolved" if row[11] else "gradient_fallback")
+            "author": row[4], "published_at": row[5], "clean_text": body_display,
+            "macro_tag": row[8],
+            "macro_tags": row[9] if row[9] else ([row[8]] if row[8] else []),
+            "micro_tags": row[10], "tldr": tldr,
+            "image_url": row[12],
+            "image_status": row[13] or ("resolved" if row[12] else "gradient_fallback")
         }
+
